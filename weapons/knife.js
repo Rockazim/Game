@@ -12,7 +12,7 @@ export class Knife extends WeaponBase {
       switchTime: 0.3,
       isMelee: true,
       position: new THREE.Vector3(0.25, -0.32, -0.4),
-      rotation: new THREE.Vector3(-0.5, 0.2, 0.1)
+      rotation: new THREE.Vector3(Math.PI/2, 0.2, 0.1)
     };
     
     super(scene, config);
