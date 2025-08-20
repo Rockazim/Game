@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:counterstrike.fandom.com)"
+      "WebFetch(domain:counterstrike.fandom.com)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
