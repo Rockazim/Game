@@ -1,11 +1,16 @@
 import * as THREE from 'three';
-import { Dust2Map } from './map.js';
+import { MapLoader } from './mapLoader.js';
+import { WeaponSystem } from './weaponSystem.js';
+import { BulletSystem } from './bulletSystem.js';
+import { Crosshair } from './crosshair.js';
+import { HUD } from './hud.js';
 
 class Game {
   constructor() {
     // Settings
     this.settings = {
-      leftHanded: false // Can be toggled to switch arm visibility
+      leftHanded: false, // Can be toggled to switch arm visibility
+      debugCollisions: false // Toggle with 'G' to see collision bounds
     };
     
     // Movement variables
@@ -41,6 +46,7 @@ class Game {
     this.createLights();
     this.createMap();
     this.createCharacter();
+    this.setupWeaponSystem();
     this.setupFirstPersonControls();
     this.setupMovementControls();
     this.handleResize();
@@ -77,8 +83,16 @@ class Game {
   }
   
   createMap() {
-    // Create the Dust 2 inspired map
-    this.map = new Dust2Map(this.scene);
+    // Create map loader and load a map
+    this.mapLoader = new MapLoader(this.scene);
+    
+    // Load simple_arena map (or change to 'krunker_style')
+    const spawnPos = this.mapLoader.loadMap('simple_arena');
+    
+    // Update player spawn position from map data
+    if (spawnPos && this.character) {
+      this.character.position.set(...spawnPos);
+    }
   }
 
   createLights() {
@@ -180,65 +194,118 @@ class Game {
     rightLeg.castShadow = true;
     this.character.add(rightLeg);
     
-    // Position character at T spawn
-    this.character.position.set(0, 1.5, 45);
+    // Position character at spawn (away from obstacles)
+    this.character.position.set(8, 1, 5);
     
     // Add character to scene
     this.scene.add(this.character);
     
-    // Create first-person view model arms (visible to player)
-    const viewArmGeometry = new THREE.BoxGeometry(0.25, 0.8, 0.25);
-    const handGeometry = new THREE.BoxGeometry(0.2, 0.25, 0.15);
-    const sleeveGeometry = new THREE.BoxGeometry(0.27, 0.3, 0.27);
+    // Create first-person view model arms (visible to player) - Krunker style minimal
+    // Use cylinders for cleaner look
+    const viewArmGeometry = new THREE.CylinderGeometry(0.03, 0.035, 0.15, 8);
+    const handGeometry = new THREE.BoxGeometry(0.06, 0.08, 0.05);
+    const sleeveGeometry = new THREE.CylinderGeometry(0.035, 0.04, 0.08, 8);
     
     if (!this.settings.leftHanded) {
-      // Right-handed configuration (default)
-      // Right arm (holding weapon position)
+      // Right-handed configuration (default) - Krunker style
+      // Minimal forearm coming from bottom-right
       const rightViewArm = new THREE.Mesh(viewArmGeometry, skinMaterial);
-      rightViewArm.position.set(0.4, -0.3, -0.5);
-      rightViewArm.rotation.x = -0.4;
-      rightViewArm.rotation.z = -0.1;
+      rightViewArm.position.set(0.25, -0.45, -0.4);
+      rightViewArm.rotation.x = 0.1;
+      rightViewArm.rotation.z = 0.15;
       this.viewModel.add(rightViewArm);
       
-      // Right hand
+      // Right hand - just the grip
       const rightHand = new THREE.Mesh(handGeometry, skinMaterial);
-      rightHand.position.set(0.4, -0.5, -0.8);
-      rightHand.rotation.x = -0.3;
+      rightHand.position.set(0.23, -0.38, -0.45);
+      rightHand.rotation.x = -0.1;
       this.viewModel.add(rightHand);
       
-      // Right sleeve
+      // Minimal sleeve at wrist
       const rightSleeve = new THREE.Mesh(sleeveGeometry, shirtMaterial);
-      rightSleeve.position.set(0.4, -0.15, -0.45);
-      rightSleeve.rotation.x = -0.4;
-      rightSleeve.rotation.z = -0.1;
+      rightSleeve.position.set(0.25, -0.48, -0.38);
+      rightSleeve.rotation.x = 0.1;
+      rightSleeve.rotation.z = 0.15;
       this.viewModel.add(rightSleeve);
+      
+      // Left support arm (for rifles only) - minimal
+      const leftSupportArm = new THREE.Mesh(viewArmGeometry, skinMaterial);
+      leftSupportArm.position.set(0.05, -0.42, -0.48);
+      leftSupportArm.rotation.x = 0.3;
+      leftSupportArm.rotation.z = -0.1;
+      leftSupportArm.visible = false; // Hide by default, show for rifles
+      this.viewModel.add(leftSupportArm);
+      this.leftSupportArm = leftSupportArm;
+      
+      // Left support hand - for rifle front grip
+      const leftSupportHand = new THREE.Mesh(handGeometry, skinMaterial);
+      leftSupportHand.position.set(0.05, -0.38, -0.55);
+      leftSupportHand.rotation.x = -0.1;
+      leftSupportHand.visible = false; // Hide by default
+      this.viewModel.add(leftSupportHand);
+      this.leftSupportHand = leftSupportHand;
     } else {
       // Left-handed configuration (can be enabled in settings)
       // Left arm (holding weapon position - mirrored)
       const leftViewArm = new THREE.Mesh(viewArmGeometry, skinMaterial);
-      leftViewArm.position.set(-0.4, -0.3, -0.5);
-      leftViewArm.rotation.x = -0.4;
-      leftViewArm.rotation.z = 0.1;
+      leftViewArm.position.set(-0.25, -0.4, -0.6);
+      leftViewArm.rotation.x = -0.2;
+      leftViewArm.rotation.z = 0.05;
       this.viewModel.add(leftViewArm);
       
       // Left hand
       const leftHand = new THREE.Mesh(handGeometry, skinMaterial);
-      leftHand.position.set(-0.4, -0.5, -0.8);
-      leftHand.rotation.x = -0.3;
+      leftHand.position.set(-0.2, -0.45, -0.85);
+      leftHand.rotation.x = -0.1;
       this.viewModel.add(leftHand);
       
       // Left sleeve
       const leftSleeve = new THREE.Mesh(sleeveGeometry, shirtMaterial);
-      leftSleeve.position.set(-0.4, -0.15, -0.45);
-      leftSleeve.rotation.x = -0.4;
-      leftSleeve.rotation.z = 0.1;
+      leftSleeve.position.set(-0.25, -0.25, -0.5);
+      leftSleeve.rotation.x = -0.2;
+      leftSleeve.rotation.z = 0.05;
       this.viewModel.add(leftSleeve);
+      
+      // Right support arm
+      const rightSupportArm = new THREE.Mesh(viewArmGeometry, skinMaterial);
+      rightSupportArm.position.set(0.15, -0.35, -0.7);
+      rightSupportArm.rotation.x = -0.1;
+      rightSupportArm.rotation.z = -0.3;
+      rightSupportArm.rotation.y = -0.2;
+      this.viewModel.add(rightSupportArm);
+      
+      // Right support hand
+      const rightSupportHand = new THREE.Mesh(handGeometry, skinMaterial);
+      rightSupportHand.position.set(0.1, -0.4, -0.9);
+      rightSupportHand.rotation.x = -0.1;
+      rightSupportHand.rotation.y = -0.2;
+      this.viewModel.add(rightSupportHand);
     }
     
     // View model is added to the scene and will follow the camera
     this.scene.add(this.viewModel);
+    
+    // Create weapon mount point
+    this.weaponMount = new THREE.Group();
+    this.viewModel.add(this.weaponMount);
   }
 
+  setupWeaponSystem() {
+    // Initialize weapon system
+    this.weaponSystem = new WeaponSystem(this.scene, this.weaponMount, this.camera);
+    this.bulletSystem = new BulletSystem(this.scene, this.camera);
+    this.crosshair = new Crosshair();
+    this.hud = new HUD();
+    
+    // Set initial crosshair and HUD for default weapon
+    this.crosshair.setWeapon('pistol');
+    this.hud.updateWeapon('Pistol');
+    
+    // Set initial health
+    this.playerHealth = 100;
+    this.hud.updateHealth(this.playerHealth);
+  }
+  
   setupFirstPersonControls() {
     // Mouse look variables
     this.mouseX = 0;
@@ -248,10 +315,33 @@ class Game {
     this.rotationSpeed = 0.002;
     this.verticalRotationLimit = Math.PI / 3; // Limit looking up/down to 60 degrees
     
-    // Lock pointer on click
+    // Lock pointer on click and handle shooting
     this.renderer.domElement.addEventListener('click', () => {
-      this.renderer.domElement.requestPointerLock();
+      if (document.pointerLockElement !== this.renderer.domElement) {
+        this.renderer.domElement.requestPointerLock();
+      }
     });
+    
+    // Mouse controls for shooting
+    this.renderer.domElement.addEventListener('mousedown', (event) => {
+      if (document.pointerLockElement === this.renderer.domElement) {
+        if (event.button === 0) { // Left click
+          this.handleShooting();
+          this.weaponSystem.startShooting();
+        } else if (event.button === 2) { // Right click
+          // Reserved for aim down sights in future
+        }
+      }
+    });
+    
+    this.renderer.domElement.addEventListener('mouseup', (event) => {
+      if (event.button === 0) {
+        this.weaponSystem.stopShooting();
+      }
+    });
+    
+    // Prevent context menu on right click
+    this.renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
     
     // Mouse movement handler
     document.addEventListener('mousemove', (event) => {
@@ -277,6 +367,44 @@ class Game {
       if (event.key === 'h' || event.key === 'H') {
         this.toggleHandPreference();
       }
+      // Press 'G' to toggle collision debug
+      if (event.key === 'g' || event.key === 'G') {
+        this.settings.debugCollisions = !this.settings.debugCollisions;
+        this.updateDebugVisuals();
+        console.log(`Collision debug: ${this.settings.debugCollisions ? 'ON' : 'OFF'}`);
+      }
+      // Weapon switching
+      if (event.key === '1') {
+        if (this.weaponSystem.switchWeapon('pistol')) {
+          this.crosshair.setWeapon('pistol');
+          this.hud.updateWeapon('Pistol');
+          // Hide left hand for pistol
+          if (this.leftSupportArm) this.leftSupportArm.visible = false;
+          if (this.leftSupportHand) this.leftSupportHand.visible = false;
+        }
+      }
+      if (event.key === '2') {
+        if (this.weaponSystem.switchWeapon('ak47')) {
+          this.crosshair.setWeapon('ak47');
+          this.hud.updateWeapon('AK-47');
+          // Show left hand for rifle
+          if (this.leftSupportArm) this.leftSupportArm.visible = true;
+          if (this.leftSupportHand) this.leftSupportHand.visible = true;
+        }
+      }
+      if (event.key === '3') {
+        if (this.weaponSystem.switchWeapon('knife')) {
+          this.crosshair.setWeapon('knife');
+          this.hud.updateWeapon('Knife');
+          // Hide left hand for knife
+          if (this.leftSupportArm) this.leftSupportArm.visible = false;
+          if (this.leftSupportHand) this.leftSupportHand.visible = false;
+        }
+      }
+      // Reload
+      if (event.key === 'r' || event.key === 'R') {
+        this.weaponSystem.reload();
+      }
     });
   }
   
@@ -301,49 +429,148 @@ class Game {
       metalness: 0.0
     });
     
-    const viewArmGeometry = new THREE.BoxGeometry(0.25, 0.8, 0.25);
-    const handGeometry = new THREE.BoxGeometry(0.2, 0.25, 0.15);
-    const sleeveGeometry = new THREE.BoxGeometry(0.27, 0.3, 0.27);
+    const viewArmGeometry = new THREE.CylinderGeometry(0.03, 0.035, 0.15, 8);
+    const handGeometry = new THREE.BoxGeometry(0.06, 0.08, 0.05);
+    const sleeveGeometry = new THREE.CylinderGeometry(0.035, 0.04, 0.08, 8);
     
     if (!this.settings.leftHanded) {
-      // Right arm
+      // Krunker style minimal arms
       const rightViewArm = new THREE.Mesh(viewArmGeometry, skinMaterial);
-      rightViewArm.position.set(0.4, -0.3, -0.5);
-      rightViewArm.rotation.x = -0.4;
-      rightViewArm.rotation.z = -0.1;
+      rightViewArm.position.set(0.25, -0.45, -0.4);
+      rightViewArm.rotation.x = 0.1;
+      rightViewArm.rotation.z = 0.15;
       this.viewModel.add(rightViewArm);
       
       const rightHand = new THREE.Mesh(handGeometry, skinMaterial);
-      rightHand.position.set(0.4, -0.5, -0.8);
-      rightHand.rotation.x = -0.3;
+      rightHand.position.set(0.23, -0.38, -0.45);
+      rightHand.rotation.x = -0.1;
       this.viewModel.add(rightHand);
       
       const rightSleeve = new THREE.Mesh(sleeveGeometry, shirtMaterial);
-      rightSleeve.position.set(0.4, -0.15, -0.45);
-      rightSleeve.rotation.x = -0.4;
-      rightSleeve.rotation.z = -0.1;
+      rightSleeve.position.set(0.25, -0.48, -0.38);
+      rightSleeve.rotation.x = 0.1;
+      rightSleeve.rotation.z = 0.15;
       this.viewModel.add(rightSleeve);
+      
+      // Left support (for rifles)
+      const leftSupportArm = new THREE.Mesh(viewArmGeometry, skinMaterial);
+      leftSupportArm.position.set(0.05, -0.42, -0.48);
+      leftSupportArm.rotation.x = 0.3;
+      leftSupportArm.rotation.z = -0.1;
+      leftSupportArm.visible = false;
+      this.viewModel.add(leftSupportArm);
+      this.leftSupportArm = leftSupportArm;
+      
+      const leftSupportHand = new THREE.Mesh(handGeometry, skinMaterial);
+      leftSupportHand.position.set(0.05, -0.38, -0.55);
+      leftSupportHand.rotation.x = -0.1;
+      leftSupportHand.visible = false;
+      this.viewModel.add(leftSupportHand);
+      this.leftSupportHand = leftSupportHand;
     } else {
-      // Left arm
+      // Left arm (holding weapon)
       const leftViewArm = new THREE.Mesh(viewArmGeometry, skinMaterial);
-      leftViewArm.position.set(-0.4, -0.3, -0.5);
-      leftViewArm.rotation.x = -0.4;
-      leftViewArm.rotation.z = 0.1;
+      leftViewArm.position.set(-0.25, -0.4, -0.6);
+      leftViewArm.rotation.x = -0.2;
+      leftViewArm.rotation.z = 0.05;
       this.viewModel.add(leftViewArm);
       
       const leftHand = new THREE.Mesh(handGeometry, skinMaterial);
-      leftHand.position.set(-0.4, -0.5, -0.8);
-      leftHand.rotation.x = -0.3;
+      leftHand.position.set(-0.2, -0.45, -0.85);
+      leftHand.rotation.x = -0.1;
       this.viewModel.add(leftHand);
       
       const leftSleeve = new THREE.Mesh(sleeveGeometry, shirtMaterial);
-      leftSleeve.position.set(-0.4, -0.15, -0.45);
-      leftSleeve.rotation.x = -0.4;
-      leftSleeve.rotation.z = 0.1;
+      leftSleeve.position.set(-0.25, -0.25, -0.5);
+      leftSleeve.rotation.x = -0.2;
+      leftSleeve.rotation.z = 0.05;
       this.viewModel.add(leftSleeve);
+      
+      // Right support arm
+      const rightSupportArm = new THREE.Mesh(viewArmGeometry, skinMaterial);
+      rightSupportArm.position.set(0.15, -0.35, -0.7);
+      rightSupportArm.rotation.x = -0.1;
+      rightSupportArm.rotation.z = -0.3;
+      rightSupportArm.rotation.y = -0.2;
+      this.viewModel.add(rightSupportArm);
+      
+      const rightSupportHand = new THREE.Mesh(handGeometry, skinMaterial);
+      rightSupportHand.position.set(0.1, -0.4, -0.9);
+      rightSupportHand.rotation.x = -0.1;
+      rightSupportHand.rotation.y = -0.2;
+      this.viewModel.add(rightSupportHand);
     }
     
     console.log(`Switched to ${this.settings.leftHanded ? 'left' : 'right'}-handed mode`);
+  }
+  
+  updateDebugVisuals() {
+    // Remove old debug visuals if they exist
+    if (this.debugCollider) {
+      this.scene.remove(this.debugCollider);
+      this.debugCollider = null;
+    }
+    if (this.debugObjects) {
+      this.debugObjects.forEach(obj => this.scene.remove(obj));
+      this.debugObjects = [];
+    }
+    
+    // Add debug collision cylinder if enabled
+    if (this.settings.debugCollisions) {
+      // Player collision cylinder
+      const playerHeight = this.isCrouching ? 1.2 : 2.4;
+      const geometry = new THREE.CylinderGeometry(0.5, 0.5, playerHeight, 16);
+      const material = new THREE.MeshBasicMaterial({ 
+        color: 0x00ff00, 
+        wireframe: true,
+        opacity: 0.7,
+        transparent: true
+      });
+      this.debugCollider = new THREE.Mesh(geometry, material);
+      this.scene.add(this.debugCollider);
+      
+      // Debug collision boxes for map objects
+      this.debugObjects = [];
+      const colliders = this.mapLoader?.getColliders() || [];
+      
+      colliders.forEach(collider => {
+        let debugMesh;
+        const debugMat = new THREE.MeshBasicMaterial({ 
+          color: 0xff0000, 
+          wireframe: true,
+          opacity: 0.3,
+          transparent: true
+        });
+        
+        if (collider.type === 'box') {
+          const [w, h, d] = collider.size;
+          debugMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(w, h, d),
+            debugMat
+          );
+          debugMesh.position.set(...collider.position);
+        } else if (collider.type === 'cylinder') {
+          const [r, h] = collider.size;
+          debugMesh = new THREE.Mesh(
+            new THREE.CylinderGeometry(r, r, h, 16),
+            debugMat
+          );
+          debugMesh.position.set(...collider.position);
+        } else if (collider.type === 'sphere') {
+          const [r] = collider.size;
+          debugMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(r, 16, 16),
+            debugMat
+          );
+          debugMesh.position.set(...collider.position);
+        }
+        
+        if (debugMesh) {
+          this.debugObjects.push(debugMesh);
+          this.scene.add(debugMesh);
+        }
+      });
+    }
   }
 
   setupMovementControls() {
@@ -439,16 +666,63 @@ class Game {
       // Apply mouse look rotation to character (horizontal)
       this.character.rotation.y = this.targetRotationX;
       
-      // Position camera at character's head position
+      // Position camera at character's head position with slight forward offset
       const headWorldPos = new THREE.Vector3();
       this.characterHead.getWorldPosition(headWorldPos);
       this.camera.position.copy(headWorldPos);
       this.camera.position.y += breathOffset;
       
+      // Add slight forward offset to camera to reduce seeing player body
+      const forward = new THREE.Vector3(0, 0, -0.15);
+      forward.applyQuaternion(this.character.quaternion);
+      this.camera.position.add(forward);
+      
       // Apply rotations to camera
       this.camera.rotation.y = this.targetRotationX;
       this.camera.rotation.x = this.targetRotationY;
       this.camera.rotation.order = 'YXZ'; // Prevent gimbal lock
+      
+      // Hide character body parts when looking down to avoid seeing blob
+      const lookingDown = this.targetRotationY > 0.8; // Increased threshold - only hide when looking very far down
+      
+      // Only hide body when looking extremely far down
+      this.character.children.forEach(child => {
+        // Always keep head hidden in first-person
+        if (child === this.characterHead) {
+          child.visible = false;
+          return;
+        }
+        
+        // Hide body only when looking very far down
+        const isBody = Math.abs(child.position.y - 1.4) < 0.1; // Body is at y=1.4
+        if (isBody && lookingDown) {
+          child.visible = false;
+        } else if (isBody) {
+          child.visible = true;
+        }
+        
+        // Legs always visible unless we add proper leg culling
+        const isLeg = child.position.y < 1;
+        if (isLeg) {
+          child.visible = true;
+        }
+      });
+      
+      // Update debug collider position if enabled
+      if (this.debugCollider) {
+        const playerHeight = this.isCrouching ? 1.2 : 2.4;
+        this.debugCollider.position.copy(this.character.position);
+        this.debugCollider.position.y += playerHeight / 2; // Center the cylinder on character
+        
+        // Update cylinder height for crouch
+        if (this.isCrouching && this.debugCollider.geometry.parameters.height !== 1.2) {
+          this.debugCollider.geometry.dispose();
+          this.debugCollider.geometry = new THREE.CylinderGeometry(0.5, 0.5, 1.2, 16);
+        } else if (!this.isCrouching && this.debugCollider.geometry.parameters.height !== 2.4) {
+          this.debugCollider.geometry.dispose();
+          this.debugCollider.geometry = new THREE.CylinderGeometry(0.5, 0.5, 2.4, 16);
+        }
+      }
     }
     
     // Update view model arms to follow camera
@@ -473,6 +747,47 @@ class Game {
       
       this.viewModel.position.x += idleSwayX;
       this.viewModel.position.y += idleSwayY;
+      
+      // Update weapon system
+      if (this.weaponSystem) {
+        const isMoving = this.keys.forward || this.keys.backward || this.keys.left || this.keys.right;
+        this.weaponSystem.update(deltaTime, isMoving, this.keys.sprint);
+        
+        // Add weapon sway from movement
+        if (isMoving) {
+          const swayAmount = this.keys.sprint ? 0.01 : 0.005;
+          this.weaponSystem.addSway(swayAmount, elapsedTime);
+        }
+      }
+      
+      // Update bullet system
+      if (this.bulletSystem) {
+        this.bulletSystem.update(deltaTime);
+      }
+      
+      // Update crosshair spread
+      if (this.crosshair) {
+        const isMoving = this.keys.forward || this.keys.backward || this.keys.left || this.keys.right;
+        const isShooting = this.weaponSystem && this.weaponSystem.isAutoFiring;
+        const isReloading = this.weaponSystem && this.weaponSystem.isReloading();
+        this.crosshair.updateSpread(isMoving, isShooting, isReloading);
+      }
+      
+      // Update HUD
+      if (this.hud && this.weaponSystem) {
+        const ammoInfo = this.weaponSystem.getAmmoInfo();
+        this.hud.updateAmmo(ammoInfo.current, ammoInfo.reserve);
+        this.hud.showReloading(this.weaponSystem.isReloading());
+      }
+      
+      // Hide/fade arms when looking too far down or up
+      const lookAngle = this.targetRotationY;
+      if (lookAngle > 0.8 || lookAngle < -0.8) {
+        // Hide arms when looking too far down or up
+        this.viewModel.visible = false;
+      } else {
+        this.viewModel.visible = true;
+      }
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -541,8 +856,14 @@ class Game {
       
       moveVector.multiplyScalar(currentSpeed * deltaTime);
       
-      // Apply movement to character
-      this.character.position.add(moveVector);
+      // Store old position for collision rollback
+      const oldPosition = this.character.position.clone();
+      
+      // Improved collision resolution with push-back
+      const resolution = this.moveWithCollision(moveVector);
+      
+      // Apply the resolved movement
+      this.character.position.add(resolution);
     }
     
     // Handle jumping (can't jump while crouching)
@@ -561,57 +882,11 @@ class Game {
     // Apply vertical velocity
     this.character.position.y += this.velocity.y * deltaTime;
     
-    // Ground collision detection (multiple levels for map)
-    let groundLevel = 0; // Default ground
+    // Simple ground collision - everything is at ground level except stairs
+    let groundLevel = 0;
     
-    // T spawn platform
-    if (Math.abs(this.character.position.x) < 12.5 && 
-        this.character.position.z > 35 && 
-        this.character.position.z < 55) {
-      groundLevel = 1.5; // T spawn height
-    }
-    // T spawn ramp
-    else if (Math.abs(this.character.position.x) < 10 && 
-             this.character.position.z > 32 && 
-             this.character.position.z < 42) {
-      // Interpolate on ramp
-      const rampProgress = (42 - this.character.position.z) / 10;
-      groundLevel = 0.5 + rampProgress * 1;
-    }
-    // Upper B tunnels
-    else if (this.character.position.x > 15 && 
-             this.character.position.x < 25 &&
-             this.character.position.z > 28 && 
-             this.character.position.z < 36) {
-      groundLevel = 2; // Upper tunnels
-    }
-    // A Site platform
-    else if (this.character.position.x < -25 && 
-             this.character.position.x > -45 &&
-             this.character.position.z < -11 && 
-             this.character.position.z > -29) {
-      groundLevel = 1; // A Site height
-    }
-    // B Site platform
-    else if (this.character.position.x > 26 && 
-             this.character.position.x < 44 &&
-             this.character.position.z < -11 && 
-             this.character.position.z > -29) {
-      groundLevel = 1; // B Site height
-    }
-    // Catwalk/Short
-    else if (this.character.position.x < -8 && 
-             this.character.position.x > -24 &&
-             this.character.position.z < 4 && 
-             this.character.position.z > -14) {
-      groundLevel = 2; // Catwalk height
-    }
-    // CT spawn
-    else if (Math.abs(this.character.position.x) < 12.5 && 
-             this.character.position.z < -32.5 && 
-             this.character.position.z > -47.5) {
-      groundLevel = 0.5; // CT spawn slight elevation
-    }
+    // Check stairs for gradual height changes
+    groundLevel = this.getStairHeight(this.character.position.x, this.character.position.z);
     
     if (this.character.position.y <= groundLevel) {
       this.character.position.y = groundLevel;
@@ -620,6 +895,306 @@ class Game {
       this.canJump = true;
     } else {
       this.isOnGround = false;
+    }
+  }
+  
+  getStairHeight(x, z) {
+    // Get colliders from map
+    if (!this.mapLoader) return 0;
+    const colliders = this.mapLoader.getColliders();
+    
+    let maxHeight = 0;
+    const playerRadius = 0.5; // Match the collision radius
+    const stepHeight = 0.5; // Maximum step height player can climb
+    
+    // Check if we're on top of any objects
+    for (const collider of colliders) {
+      if (collider.type === 'box') {
+        const [width, height, depth] = collider.size;
+        const [objX, objY, objZ] = collider.position;
+        
+        // More precise box top detection
+        const boxLeft = objX - width/2;
+        const boxRight = objX + width/2;
+        const boxFront = objZ - depth/2;
+        const boxBack = objZ + depth/2;
+        const boxTop = objY + height/2;
+        
+        // Check if player overlaps with box horizontally
+        if (x >= boxLeft - playerRadius && x <= boxRight + playerRadius &&
+            z >= boxFront - playerRadius && z <= boxBack + playerRadius) {
+          
+          // Only consider as ground if it's within step height
+          if (boxTop > maxHeight && boxTop <= this.character.position.y + stepHeight) {
+            maxHeight = boxTop;
+          }
+        }
+      } else if (collider.type === 'cylinder') {
+        const [radius, height] = collider.size;
+        const [objX, objY, objZ] = collider.position;
+        
+        // Check if we're above this cylinder
+        const dist = Math.sqrt((x - objX) * (x - objX) + (z - objZ) * (z - objZ));
+        if (dist < radius + playerRadius) {
+          const topHeight = objY + height/2;
+          if (topHeight > maxHeight && topHeight <= this.character.position.y + stepHeight) {
+            maxHeight = topHeight;
+          }
+        }
+      } else if (collider.type === 'sphere') {
+        const [radius] = collider.size;
+        const [objX, objY, objZ] = collider.position;
+        
+        // Check if we're above this sphere
+        const dist = Math.sqrt((x - objX) * (x - objX) + (z - objZ) * (z - objZ));
+        if (dist < radius + playerRadius) {
+          // Calculate sphere height at player position
+          const sphereHeightAtPos = Math.sqrt(Math.max(0, radius * radius - dist * dist));
+          const topHeight = objY + sphereHeightAtPos;
+          if (topHeight > maxHeight && topHeight <= this.character.position.y + stepHeight) {
+            maxHeight = topHeight;
+          }
+        }
+      } else if (collider.type === 'ramp') {
+        // Improved ramp walking
+        const [width, height, length] = collider.size;
+        const [objX, objY, objZ] = collider.position;
+        const rotation = collider.rotation[1] || 0; // Y rotation in degrees
+        
+        // Transform player position to ramp's local space
+        const localX = x - objX;
+        const localZ = z - objZ;
+        
+        // Apply rotation to get local coordinates
+        const rad = -rotation * Math.PI / 180;
+        const rotX = localX * Math.cos(rad) - localZ * Math.sin(rad);
+        const rotZ = localX * Math.sin(rad) + localZ * Math.cos(rad);
+        
+        // Check if player is on the ramp (with proper bounds)
+        if (Math.abs(rotX) <= width/2 + playerRadius && 
+            rotZ >= -length/2 - playerRadius && 
+            rotZ <= length/2 + playerRadius) {
+          
+          // Calculate height based on position along ramp
+          // Ramps slope from back to front
+          const clampedZ = Math.max(-length/2, Math.min(length/2, rotZ));
+          const progress = (clampedZ + length/2) / length;
+          const rampHeight = objY + progress * height;
+          
+          // Allow smooth ramp walking
+          if (rampHeight > maxHeight) {
+            maxHeight = rampHeight;
+          }
+        }
+      }
+    }
+    
+    return maxHeight;
+  }
+  
+  moveWithCollision(moveVector) {
+    // Advanced collision resolution with proper physics
+    const steps = 5; // Number of substeps for accurate collision
+    const stepVector = moveVector.clone().divideScalar(steps);
+    const finalMove = new THREE.Vector3();
+    
+    for (let i = 0; i < steps; i++) {
+      const testPos = this.character.position.clone().add(finalMove).add(stepVector);
+      const collision = this.getCollisionInfo(testPos);
+      
+      if (collision.hit) {
+        // Calculate push-back vector
+        const pushBack = collision.normal.multiplyScalar(collision.penetration);
+        
+        // Slide along the surface
+        const slideVector = stepVector.clone();
+        const dot = slideVector.dot(collision.normal);
+        slideVector.sub(collision.normal.clone().multiplyScalar(dot));
+        
+        // Apply sliding movement
+        finalMove.add(slideVector);
+        finalMove.add(pushBack);
+      } else {
+        finalMove.add(stepVector);
+      }
+    }
+    
+    return finalMove;
+  }
+  
+  getCollisionInfo(testPos) {
+    const playerRadius = 0.5; // More accurate radius
+    const playerHeight = this.isCrouching ? 1.2 : 2.4;
+    const playerBottom = testPos.y;
+    const playerTop = playerBottom + playerHeight;
+    
+    if (!this.mapLoader) return { hit: false };
+    const colliders = this.mapLoader.getColliders();
+    
+    let closestCollision = null;
+    let minDistance = Infinity;
+    
+    for (const collider of colliders) {
+      if (collider.type === 'box') {
+        const [width, height, depth] = collider.size;
+        const [objX, objY, objZ] = collider.position;
+        
+        // Box bounds
+        const boxLeft = objX - width/2;
+        const boxRight = objX + width/2;
+        const boxFront = objZ - depth/2;
+        const boxBack = objZ + depth/2;
+        const boxBottom = objY - height/2;
+        const boxTop = objY + height/2;
+        
+        // Check if we're on top of the box (allow standing)
+        const onTop = testPos.x >= boxLeft - playerRadius && 
+                     testPos.x <= boxRight + playerRadius &&
+                     testPos.z >= boxFront - playerRadius && 
+                     testPos.z <= boxBack + playerRadius &&
+                     playerBottom >= boxTop - 0.3 && 
+                     playerBottom <= boxTop + 0.5;
+        
+        if (onTop) continue; // Allow standing on top
+        
+        // Check vertical overlap
+        if (playerTop <= boxBottom || playerBottom >= boxTop) continue;
+        
+        // Find closest point on box to cylinder center
+        const closestX = Math.max(boxLeft, Math.min(testPos.x, boxRight));
+        const closestZ = Math.max(boxFront, Math.min(testPos.z, boxBack));
+        
+        // Calculate distance to closest point
+        const dx = testPos.x - closestX;
+        const dz = testPos.z - closestZ;
+        const distSq = dx * dx + dz * dz;
+        
+        if (distSq < playerRadius * playerRadius) {
+          const dist = Math.sqrt(distSq);
+          const penetration = playerRadius - dist;
+          
+          // Calculate collision normal
+          let normal;
+          if (dist > 0.001) {
+            normal = new THREE.Vector3(dx/dist, 0, dz/dist);
+          } else {
+            // Player center is inside box, push out to nearest edge
+            const distances = [
+              { dist: Math.abs(testPos.x - boxLeft), normal: new THREE.Vector3(-1, 0, 0) },
+              { dist: Math.abs(testPos.x - boxRight), normal: new THREE.Vector3(1, 0, 0) },
+              { dist: Math.abs(testPos.z - boxFront), normal: new THREE.Vector3(0, 0, -1) },
+              { dist: Math.abs(testPos.z - boxBack), normal: new THREE.Vector3(0, 0, 1) }
+            ];
+            distances.sort((a, b) => a.dist - b.dist);
+            normal = distances[0].normal;
+          }
+          
+          if (dist < minDistance) {
+            minDistance = dist;
+            closestCollision = {
+              hit: true,
+              normal: normal,
+              penetration: penetration,
+              distance: dist
+            };
+          }
+        }
+      } else if (collider.type === 'cylinder') {
+        const [radius, height] = collider.size;
+        const [objX, objY, objZ] = collider.position;
+        
+        const cylBottom = objY - height/2;
+        const cylTop = objY + height/2;
+        
+        // Check if on top
+        const dist2D = Math.sqrt((testPos.x - objX) ** 2 + (testPos.z - objZ) ** 2);
+        const onTop = dist2D < radius + playerRadius * 0.5 && 
+                     playerBottom >= cylTop - 0.3 && 
+                     playerBottom <= cylTop + 0.5;
+        
+        if (onTop) continue;
+        
+        // Check vertical overlap
+        if (playerTop <= cylBottom || playerBottom >= cylTop) continue;
+        
+        // Cylinder-cylinder collision in 2D
+        if (dist2D < radius + playerRadius && dist2D > 0.001) {
+          const penetration = (radius + playerRadius) - dist2D;
+          const normal = new THREE.Vector3(
+            (testPos.x - objX) / dist2D,
+            0,
+            (testPos.z - objZ) / dist2D
+          );
+          
+          if (dist2D < minDistance) {
+            minDistance = dist2D;
+            closestCollision = {
+              hit: true,
+              normal: normal,
+              penetration: penetration,
+              distance: dist2D
+            };
+          }
+        }
+      } else if (collider.type === 'sphere') {
+        const [radius] = collider.size;
+        const [objX, objY, objZ] = collider.position;
+        
+        // Find closest point on player cylinder to sphere center
+        const cylHeight = playerHeight;
+        const closestY = Math.max(playerBottom, Math.min(objY, playerTop));
+        
+        // Calculate 3D distance
+        const dx = testPos.x - objX;
+        const dy = closestY - objY;
+        const dz = testPos.z - objZ;
+        const dist3D = Math.sqrt(dx*dx + dy*dy + dz*dz);
+        
+        if (dist3D < radius + playerRadius && dist3D > 0.001) {
+          const penetration = (radius + playerRadius) - dist3D;
+          const normal = new THREE.Vector3(
+            dx / dist3D,
+            dy / dist3D,
+            dz / dist3D
+          );
+          
+          if (dist3D < minDistance) {
+            minDistance = dist3D;
+            closestCollision = {
+              hit: true,
+              normal: normal,
+              penetration: penetration,
+              distance: dist3D
+            };
+          }
+        }
+      }
+    }
+    
+    return closestCollision || { hit: false };
+  }
+  
+  checkCollision() {
+    // Simple collision check (for compatibility)
+    const collision = this.getCollisionInfo(this.character.position);
+    return collision.hit;
+  }
+  
+  handleShooting() {
+    if (!this.weaponSystem || !this.bulletSystem) return;
+    
+    const shotData = this.weaponSystem.fire();
+    if (shotData) {
+      // Perform hit detection
+      const hitResult = this.bulletSystem.shoot(shotData, this.mapLoader.getColliders());
+      
+      if (hitResult.hit) {
+        console.log(`Hit at distance: ${hitResult.distance.toFixed(2)}m, Damage: ${hitResult.damage}`);
+        // Show hit marker
+        if (this.hud) {
+          this.hud.showHitMarker();
+        }
+      }
     }
   }
 }
