@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Game</title>
+    <style>
+      * { 
+        margin: 0; 
+        padding: 0; 
+        box-sizing: border-box;
+      }
+      body {
+        overflow: hidden;
+        font-family: Arial, sans-serif;
+      }
+      canvas {
+        display: block;
+      }
+      #crosshair {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 20px;
+        height: 20px;
+        pointer-events: none;
+        z-index: 1000;
+      }
+      #crosshair::before,
+      #crosshair::after {
+        content: '';
+        position: absolute;
+        background: rgba(255, 255, 255, 0.8);
+      }
+      #crosshair::before {
+        top: 50%;
+        left: 0;
+        width: 100%;
+        height: 2px;
+        transform: translateY(-50%);
+      }
+      #crosshair::after {
+        left: 50%;
+        top: 0;
+        width: 2px;
+        height: 100%;
+        transform: translateX(-50%);
+      }
+      #instructions {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        color: white;
+        background: rgba(0, 0, 0, 0.5);
+        padding: 10px;
+        border-radius: 5px;
+        z-index: 1000;
+      }
+    </style>
+    <script type="module" crossorigin src="./assets/index-B0NcNb1o.js"></script>
+  </head>
+  <body>
+    <div id="crosshair"></div>
+    <div id="instructions">
+      <strong>Controls:</strong><br>
+      Click to lock mouse | ESC to unlock<br>
+      WASD/Arrows to move<br>
+      Space to jump | Shift to sprint | C to crouch<br>
+      Mouse to look around<br>
+      H to toggle left/right hand
+    </div>
+  </body>
+</html>

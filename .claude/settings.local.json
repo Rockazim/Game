@@ -4,7 +4,12 @@
       "WebFetch(domain:counterstrike.fandom.com)",
       "Bash(git push:*)",
       "Bash(mkdir:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(npm run dev:*)",
+      "Bash(sudo apt:*)",
+      "Bash(sudo apt install:*)",
+      "Bash(cp:*)",
+      "Bash(npm run build:*)"
     ],
     "deny": [],
     "ask": []

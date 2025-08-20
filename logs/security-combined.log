@@ -1,0 +1,2 @@
+{"environment":"development","level":"info","message":"Security Event","port":"3000","service":"fps-game-security","severity":"low","timestamp":"2025-08-20T22:53:01.160Z","type":"server_started"}
+{"environment":"production","level":"info","message":"Security Event","port":"3000","service":"fps-game-security","severity":"low","timestamp":"2025-08-20T23:12:41.554Z","type":"server_started"}
