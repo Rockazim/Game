@@ -818,8 +818,13 @@ class Game {
     if (this.multiplayer && this.multiplayer.connected && this.multiplayer.roomId) {
       // Send position every few frames to reduce network traffic
       if (!this.lastNetworkUpdate || Date.now() - this.lastNetworkUpdate > 50) {
+        // Convert Three.js Vector3 to plain object
         this.multiplayer.sendMovement(
-          this.character.position,
+          {
+            x: this.character.position.x,
+            y: this.character.position.y,
+            z: this.character.position.z
+          },
           { x: this.targetRotationY, y: this.targetRotationX }
         );
         this.lastNetworkUpdate = Date.now();
@@ -1244,9 +1249,18 @@ class Game {
     if (shotData) {
       // Send shooting event to server
       if (this.multiplayer && this.multiplayer.connected && this.multiplayer.roomId) {
+        // Convert Three.js Vector3 objects to plain objects
         this.multiplayer.sendShoot(
-          shotData.origin,
-          shotData.direction,
+          {
+            x: shotData.origin.x,
+            y: shotData.origin.y,
+            z: shotData.origin.z
+          },
+          {
+            x: shotData.direction.x,
+            y: shotData.direction.y,
+            z: shotData.direction.z
+          },
           this.weaponSystem.currentWeapon
         );
       }
