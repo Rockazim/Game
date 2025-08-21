@@ -5,6 +5,8 @@ import { BulletSystem } from './bulletSystem.js';
 import { Crosshair } from './crosshair.js';
 import { HUD } from './hud.js';
 import { SimpleMultiplayer } from './src/simple-multiplayer.js';
+import { PlayerModel } from './playerModel.js';
+import { HitboxSystem } from './hitboxSystem.js';
 
 class Game {
   constructor() {
@@ -17,6 +19,10 @@ class Game {
     // Multiplayer
     this.multiplayer = null;
     this.remotePlayers = new Map();
+    this.remotePlayerModels = new Map();
+    
+    // Hitbox system for advanced hit detection
+    this.hitboxSystem = new HitboxSystem();
     
     // Player properties
     this.player = {
@@ -136,16 +142,35 @@ class Game {
   }
 
   createCharacter() {
-    // Create character group
-    this.character = new THREE.Group();
+    // Create new player model with improved design
+    this.playerModel = new PlayerModel({
+      team: 'ct', // Default to CT team
+      isLocalPlayer: true,
+      showArms: false // Hide arms in first-person view
+    });
+    
+    // Get the character group from the model
+    this.character = this.playerModel.getModel();
     
     // Link player position reference
     this.player.position = this.character.position;
     
-    // Create view model group (arms that follow camera)
+    // Position character at spawn (away from obstacles)
+    this.character.position.set(8, 1, 5);
+    
+    // Add character to scene
+    this.scene.add(this.character);
+    
+    // Register local player with hitbox system (for self-damage, fall damage, etc.)
+    this.hitboxSystem.registerPlayer('local', this.playerModel);
+    
+    // Store head reference for camera positioning
+    this.characterHead = this.playerModel.head;
+    
+    // Create first-person view model arms (visible to player) - Krunker style minimal
     this.viewModel = new THREE.Group();
     
-    // Materials for different body parts
+    // Create materials for view model arms
     const skinMaterial = new THREE.MeshStandardMaterial({
       color: '#fdbcb4',
       roughness: 0.7,
@@ -158,67 +183,6 @@ class Game {
       metalness: 0.0
     });
     
-    const pantsMaterial = new THREE.MeshStandardMaterial({
-      color: '#1f1f1f',
-      roughness: 0.8,
-      metalness: 0.0
-    });
-    
-    // Head (cube) - Hidden in first-person view
-    const headGeometry = new THREE.BoxGeometry(0.8, 0.8, 0.8);
-    const head = new THREE.Mesh(headGeometry, skinMaterial);
-    head.position.y = 2.4;
-    head.castShadow = true;
-    head.receiveShadow = true;
-    head.visible = false; // Hide head in first-person
-    this.character.add(head);
-    
-    // Store head reference for camera positioning
-    this.characterHead = head;
-    
-    // Body (rectangular box)
-    const bodyGeometry = new THREE.BoxGeometry(1.0, 1.2, 0.6);
-    const body = new THREE.Mesh(bodyGeometry, shirtMaterial);
-    body.position.y = 1.4;
-    body.castShadow = true;
-    body.receiveShadow = true;
-    this.character.add(body);
-    
-    // Left Arm - Hidden in first-person
-    const armGeometry = new THREE.BoxGeometry(0.3, 1.0, 0.3);
-    const leftArm = new THREE.Mesh(armGeometry, skinMaterial);
-    leftArm.position.set(-0.75, 1.4, 0);
-    leftArm.castShadow = true;
-    leftArm.visible = false; // Hide in first-person
-    this.character.add(leftArm);
-    
-    // Right Arm - Hidden in first-person
-    const rightArm = new THREE.Mesh(armGeometry, skinMaterial);
-    rightArm.position.set(0.75, 1.4, 0);
-    rightArm.castShadow = true;
-    rightArm.visible = false; // Hide in first-person
-    this.character.add(rightArm);
-    
-    // Left Leg
-    const legGeometry = new THREE.BoxGeometry(0.4, 1.0, 0.4);
-    const leftLeg = new THREE.Mesh(legGeometry, pantsMaterial);
-    leftLeg.position.set(-0.25, 0.3, 0);
-    leftLeg.castShadow = true;
-    this.character.add(leftLeg);
-    
-    // Right Leg
-    const rightLeg = new THREE.Mesh(legGeometry, pantsMaterial);
-    rightLeg.position.set(0.25, 0.3, 0);
-    rightLeg.castShadow = true;
-    this.character.add(rightLeg);
-    
-    // Position character at spawn (away from obstacles)
-    this.character.position.set(8, 1, 5);
-    
-    // Add character to scene
-    this.scene.add(this.character);
-    
-    // Create first-person view model arms (visible to player) - Krunker style minimal
     // Use cylinders for cleaner look
     const viewArmGeometry = new THREE.CylinderGeometry(0.03, 0.035, 0.15, 8);
     const handGeometry = new THREE.BoxGeometry(0.06, 0.08, 0.05);
@@ -311,7 +275,7 @@ class Game {
   setupWeaponSystem() {
     // Initialize weapon system
     this.weaponSystem = new WeaponSystem(this.scene, this.weaponMount, this.camera);
-    this.bulletSystem = new BulletSystem(this.scene, this.camera);
+    this.bulletSystem = new BulletSystem(this.scene, this.camera, this.hitboxSystem);
     this.crosshair = new Crosshair();
     this.hud = new HUD();
     
@@ -624,6 +588,37 @@ class Game {
         case 'KeyC':
           this.keys.crouch = true;
           break;
+        
+        // Debug controls
+        case 'KeyH':
+          // Toggle hitbox visibility
+          if (this.hitboxSystem) {
+            this.settings.debugCollisions = !this.settings.debugCollisions;
+            this.hitboxSystem.setDebugMode(this.settings.debugCollisions);
+            console.log(`Hitbox debug mode: ${this.settings.debugCollisions ? 'ON' : 'OFF'}`);
+          }
+          break;
+        
+        case 'KeyT':
+          // Spawn test dummy player
+          this.spawnTestDummy();
+          break;
+        
+        case 'KeyG':
+          // Toggle glow effects
+          if (this.playerModel) {
+            this.settings.glowEnabled = !this.settings.glowEnabled;
+            this.playerModel.setGlowEffect(this.settings.glowEnabled);
+            console.log(`Glow effects: ${this.settings.glowEnabled ? 'ON' : 'OFF'}`);
+          }
+          break;
+        
+        case 'KeyP':
+          // Print hit statistics
+          if (this.hitboxSystem) {
+            console.log('Hit Statistics:', this.hitStats || 'No hits recorded');
+          }
+          break;
       }
     });
     
@@ -675,6 +670,12 @@ class Game {
 
     // Update movement
     this.updateMovement(deltaTime);
+    
+    // Update player model animations
+    if (this.playerModel) {
+      this.playerModel.update(deltaTime, this.velocity);
+      this.playerModel.setCrouching(this.isCrouching);
+    }
 
     // Update character and camera
     if (this.character) {
@@ -783,6 +784,11 @@ class Game {
         this.bulletSystem.update(deltaTime);
       }
       
+      // Update hitbox system (for hit markers, etc.)
+      if (this.hitboxSystem) {
+        this.hitboxSystem.updateHitMarkers(this.scene, deltaTime);
+      }
+      
       // Update crosshair spread
       if (this.crosshair) {
         const isMoving = this.keys.forward || this.keys.backward || this.keys.left || this.keys.right;
@@ -821,6 +827,18 @@ class Game {
       
       // Update remote players
       this.multiplayer.updatePlayers(deltaTime);
+      
+      // Update remote player animations
+      for (const [playerId, playerModel] of this.remotePlayerModels) {
+        const remotePlayer = this.multiplayer.players.get(playerId);
+        if (remotePlayer && playerModel) {
+          // Calculate velocity from position changes
+          const velocity = remotePlayer.targetPosition ? 
+            new THREE.Vector3().subVectors(remotePlayer.targetPosition, remotePlayer.mesh.position) : 
+            new THREE.Vector3();
+          playerModel.update(deltaTime, velocity);
+        }
+      }
     }
 
     this.renderer.render(this.scene, this.camera);
@@ -1239,7 +1257,40 @@ class Game {
       if (hitResult.hit) {
         if (hitResult.isPlayer && hitResult.playerId) {
           // Hit a player!
-          console.log(`Hit player! ID: ${hitResult.playerId}, Damage: ${hitResult.damage}${hitResult.isHeadshot ? ' (HEADSHOT!)' : ''}`);
+          const bodyPartText = hitResult.bodyPart ? ` [${hitResult.bodyPart.toUpperCase()}]` : '';
+          console.log(`Hit player! ID: ${hitResult.playerId}, Damage: ${hitResult.damage}${bodyPartText}${hitResult.isHeadshot ? ' (HEADSHOT!)' : ''}`);
+          
+          // Track hit statistics for testing
+          if (!this.hitStats) {
+            this.hitStats = {
+              totalHits: 0,
+              headshots: 0,
+              bodyShots: 0,
+              limbShots: 0,
+              totalDamage: 0,
+              shots: 0,
+              accuracy: 0
+            };
+          }
+          
+          this.hitStats.totalHits++;
+          this.hitStats.totalDamage += hitResult.damage;
+          
+          if (hitResult.bodyPart) {
+            switch(hitResult.bodyPart) {
+              case 'head':
+                this.hitStats.headshots++;
+                break;
+              case 'chest':
+              case 'stomach':
+                this.hitStats.bodyShots++;
+                break;
+              case 'arm':
+              case 'leg':
+                this.hitStats.limbShots++;
+                break;
+            }
+          }
           
           // Send hit event to server
           if (this.multiplayer && this.multiplayer.connected) {
@@ -1257,6 +1308,17 @@ class Game {
         } else {
           // Hit environment
           console.log(`Hit at distance: ${hitResult.distance.toFixed(2)}m`);
+        }
+      }
+      
+      // Track total shots for accuracy calculation
+      if (shotData) {
+        if (!this.hitStats) {
+          this.hitStats = { totalHits: 0, shots: 0, accuracy: 0 };
+        }
+        this.hitStats.shots++;
+        if (this.hitStats.totalHits > 0) {
+          this.hitStats.accuracy = ((this.hitStats.totalHits / this.hitStats.shots) * 100).toFixed(1);
         }
       }
     }
@@ -1384,49 +1446,83 @@ class Game {
   }
   
   createRemotePlayer(playerData) {
-    // Create a simple player mesh
-    const playerGeometry = new THREE.CapsuleGeometry(0.5, 1.8, 4, 8);
-    const playerMaterial = new THREE.MeshStandardMaterial({ 
-      color: new THREE.Color().setHSL(Math.random(), 0.7, 0.5),
-      roughness: 0.7,
-      metalness: 0.0
+    // Create new player model using the improved system
+    // Randomly assign team for visual variety (or use playerData.team if available)
+    const team = playerData.team || (Math.random() > 0.5 ? 'ct' : 't');
+    
+    const remotePlayerModel = new PlayerModel({
+      team: team,
+      isLocalPlayer: false,
+      showArms: true // Show arms for remote players
     });
     
-    const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
+    const playerMesh = remotePlayerModel.getModel();
     playerMesh.position.set(
       playerData.position?.x || 0,
-      (playerData.position?.y || 0) + 1.4,
+      (playerData.position?.y || 0),
       playerData.position?.z || 0
     );
     
-    // Add name label
+    // Add name label above player
     const canvas = document.createElement('canvas');
     canvas.width = 256;
     canvas.height = 64;
     const ctx = canvas.getContext('2d');
+    
+    // Add background for better visibility
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(0, 0, 256, 64);
+    
+    // Draw username
     ctx.fillStyle = 'white';
-    ctx.font = '32px Arial';
+    ctx.font = 'bold 28px Arial';
     ctx.textAlign = 'center';
     ctx.fillText(playerData.username || 'Player', 128, 40);
     
     const texture = new THREE.CanvasTexture(canvas);
-    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+    const spriteMaterial = new THREE.SpriteMaterial({ 
+      map: texture,
+      depthTest: false,
+      depthWrite: false
+    });
     const sprite = new THREE.Sprite(spriteMaterial);
     sprite.scale.set(2, 0.5, 1);
-    sprite.position.y = 2;
+    sprite.position.y = 3.2; // Position above the new model's head
     playerMesh.add(sprite);
     
+    // Add player to scene
     this.scene.add(playerMesh);
+    
+    // Store both the mesh and the model for animation
     this.remotePlayers.set(playerData.id, playerMesh);
+    this.remotePlayerModels.set(playerData.id, remotePlayerModel);
+    
+    // Register with hitbox system for hit detection
+    this.hitboxSystem.registerPlayer(playerData.id, remotePlayerModel);
+    
+    // Enable glow effect for team identification
+    remotePlayerModel.setGlowEffect(true);
     
     return playerMesh;
   }
   
   removeRemotePlayer(playerMesh) {
     this.scene.remove(playerMesh);
-    // Find and remove from map
+    
+    // Find and remove from maps
     for (const [id, mesh] of this.remotePlayers.entries()) {
       if (mesh === playerMesh) {
+        // Unregister from hitbox system
+        this.hitboxSystem.unregisterPlayer(id);
+        
+        // Clean up player model
+        const playerModel = this.remotePlayerModels.get(id);
+        if (playerModel) {
+          playerModel.dispose();
+          this.remotePlayerModels.delete(id);
+        }
+        
+        // Remove from remote players map
         this.remotePlayers.delete(id);
         break;
       }
@@ -1466,6 +1562,48 @@ class Game {
       overlay.style.transition = 'opacity 0.5s';
       setTimeout(() => document.body.removeChild(overlay), 500);
     }, 100);
+  }
+  
+  // Test/Debug methods
+  spawnTestDummy() {
+    // Create a test dummy player at a random position near the player
+    const dummyData = {
+      id: `dummy_${Date.now()}`,
+      username: `TestDummy_${Math.floor(Math.random() * 100)}`,
+      position: {
+        x: this.character.position.x + (Math.random() - 0.5) * 10,
+        y: this.character.position.y,
+        z: this.character.position.z + (Math.random() - 0.5) * 10
+      },
+      team: Math.random() > 0.5 ? 'ct' : 't'
+    };
+    
+    // Create the dummy using the same system as remote players
+    const dummyMesh = this.createRemotePlayer(dummyData);
+    
+    console.log(`Spawned test dummy: ${dummyData.username} at position (${dummyData.position.x.toFixed(1)}, ${dummyData.position.y.toFixed(1)}, ${dummyData.position.z.toFixed(1)})`);
+    
+    // Add to test dummies list for cleanup
+    if (!this.testDummies) {
+      this.testDummies = [];
+    }
+    this.testDummies.push({
+      id: dummyData.id,
+      mesh: dummyMesh,
+      data: dummyData
+    });
+    
+    return dummyMesh;
+  }
+  
+  clearTestDummies() {
+    if (this.testDummies) {
+      this.testDummies.forEach(dummy => {
+        this.removeRemotePlayer(dummy.mesh);
+      });
+      this.testDummies = [];
+      console.log('Cleared all test dummies');
+    }
   }
   
   showDamageNumber(position, damage, isHeadshot) {

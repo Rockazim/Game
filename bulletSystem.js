@@ -1,9 +1,10 @@
 import * as THREE from 'three';
 
 export class BulletSystem {
-  constructor(scene, camera) {
+  constructor(scene, camera, hitboxSystem = null) {
     this.scene = scene;
     this.camera = camera;
+    this.hitboxSystem = hitboxSystem; // New hitbox system for accurate hit detection
     this.raycaster = new THREE.Raycaster();
     this.raycaster.camera = camera; // Set camera for sprite raycasting
     this.impacts = [];
@@ -128,67 +129,113 @@ export class BulletSystem {
       origin = this.camera.position;
     }
     
-    this.raycaster.set(origin, direction);
-    this.raycaster.far = weaponData.range;
-    
-    // First check for hits on remote players
-    if (remotePlayers && remotePlayers.size > 0) {
-      const playerMeshes = Array.from(remotePlayers.values());
+    // Use the new hitbox system if available for accurate hit detection
+    if (this.hitboxSystem && this.hitboxSystem.playerModels.size > 0) {
+      const hitResult = this.hitboxSystem.checkHit(
+        origin, 
+        direction, 
+        weaponData.range,
+        'local' // Exclude local player from hit detection
+      );
       
-      // Filter out null meshes and create a list of valid targets (excluding sprites)
-      const validTargets = [];
-      playerMeshes.forEach(mesh => {
-        if (mesh && mesh.matrixWorld) {
-          // Add the main mesh if it's not a sprite
-          if (!(mesh instanceof THREE.Sprite)) {
-            validTargets.push(mesh);
-          }
-          // Add non-sprite children
-          if (mesh.children) {
-            mesh.children.forEach(child => {
-              if (child && child.matrixWorld && !(child instanceof THREE.Sprite)) {
-                validTargets.push(child);
-              }
-            });
-          }
-        }
-      });
-      
-      const playerIntersects = validTargets.length > 0 ? this.raycaster.intersectObjects(validTargets, false) : [];
-      
-      if (playerIntersects.length > 0) {
-        const hit = playerIntersects[0];
-        
-        // Find which player was hit
-        let hitPlayerId = null;
-        for (const [playerId, mesh] of remotePlayers.entries()) {
-          if (mesh === hit.object || (mesh.children && mesh.children.includes(hit.object))) {
-            hitPlayerId = playerId;
-            break;
-          }
-        }
+      if (hitResult && hitResult.hit) {
+        // Calculate damage using hitbox system
+        const damage = this.hitboxSystem.calculateDamage(weaponData.damage, hitResult);
         
         // Show impact effect
-        this.showImpact(hit.point, hit.face ? hit.face.normal : new THREE.Vector3(0, 1, 0));
+        this.showImpact(hitResult.point, hitResult.normal);
         
-        // Calculate damage with headshot bonus
-        let damage = weaponData.damage;
-        const headHeight = 1.6; // Approximate head position
-        if (hit.point.y > headHeight) {
-          damage = Math.round(damage * 2); // Double damage for headshot
+        // Create hit marker with damage feedback
+        if (this.hitboxSystem.createHitMarker) {
+          this.hitboxSystem.createHitMarker(
+            this.scene,
+            hitResult.point,
+            hitResult.bodyPart,
+            damage
+          );
         }
         
-        // Return player hit information
+        // Return enhanced hit information
         return {
           hit: true,
-          point: hit.point,
-          distance: hit.distance,
-          object: hit.object,
+          point: hitResult.point,
+          distance: hitResult.distance,
+          object: hitResult.hitbox,
           damage: damage,
           isPlayer: true,
-          playerId: hitPlayerId,
-          isHeadshot: hit.point.y > headHeight
+          playerId: hitResult.playerId,
+          isHeadshot: hitResult.isHeadshot,
+          bodyPart: hitResult.bodyPart,
+          damageMultiplier: hitResult.damageMultiplier
         };
+      }
+    }
+    
+    // If hitbox system didn't find a hit or isn't available, use fallback
+    if (!this.hitboxSystem || this.hitboxSystem.playerModels.size === 0) {
+      // Fallback to old system
+      this.raycaster.set(origin, direction);
+      this.raycaster.far = weaponData.range;
+      
+      // First check for hits on remote players
+      if (remotePlayers && remotePlayers.size > 0) {
+        const playerMeshes = Array.from(remotePlayers.values());
+        
+        // Filter out null meshes and create a list of valid targets (excluding sprites)
+        const validTargets = [];
+        playerMeshes.forEach(mesh => {
+          if (mesh && mesh.matrixWorld) {
+            // Add the main mesh if it's not a sprite
+            if (!(mesh instanceof THREE.Sprite)) {
+              validTargets.push(mesh);
+            }
+            // Add non-sprite children
+            if (mesh.children) {
+              mesh.children.forEach(child => {
+                if (child && child.matrixWorld && !(child instanceof THREE.Sprite)) {
+                  validTargets.push(child);
+                }
+              });
+            }
+          }
+        });
+        
+        const playerIntersects = validTargets.length > 0 ? this.raycaster.intersectObjects(validTargets, false) : [];
+        
+        if (playerIntersects.length > 0) {
+          const hit = playerIntersects[0];
+          
+          // Find which player was hit
+          let hitPlayerId = null;
+          for (const [playerId, mesh] of remotePlayers.entries()) {
+            if (mesh === hit.object || (mesh.children && mesh.children.includes(hit.object))) {
+              hitPlayerId = playerId;
+              break;
+            }
+          }
+          
+          // Show impact effect
+          this.showImpact(hit.point, hit.face ? hit.face.normal : new THREE.Vector3(0, 1, 0));
+          
+          // Calculate damage with headshot bonus
+          let damage = weaponData.damage;
+          const headHeight = 1.6; // Approximate head position
+          if (hit.point.y > headHeight) {
+            damage = Math.round(damage * 2); // Double damage for headshot
+          }
+          
+          // Return player hit information
+          return {
+            hit: true,
+            point: hit.point,
+            distance: hit.distance,
+            object: hit.object,
+            damage: damage,
+            isPlayer: true,
+            playerId: hitPlayerId,
+            isHeadshot: hit.point.y > headHeight
+          };
+        }
       }
     }
     
