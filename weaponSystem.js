@@ -100,12 +100,27 @@ export class WeaponSystem {
     const success = this.currentWeapon.fire();
     
     if (success) {
+      // Calculate shot origin and direction for multiplayer
+      const origin = this.camera.position.clone();
+      
+      // Calculate spread based on accuracy
+      const spread = (1 - this.currentWeapon.config.accuracy) * 0.05;
+      const spreadX = (Math.random() - 0.5) * spread;
+      const spreadY = (Math.random() - 0.5) * spread;
+      
+      // Set up direction from camera center with spread
+      const direction = new THREE.Vector3(spreadX, spreadY, -1);
+      direction.unproject(this.camera);
+      direction.sub(this.camera.position).normalize();
+      
       // Return shot data for hit detection
       return {
         damage: this.currentWeapon.config.damage,
         range: this.currentWeapon.config.range,
         accuracy: this.currentWeapon.config.accuracy,
-        isMelee: this.currentWeapon.config.isMelee || false
+        isMelee: this.currentWeapon.config.isMelee || false,
+        origin: origin,
+        direction: direction
       };
     }
     

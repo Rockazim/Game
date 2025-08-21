@@ -138,8 +138,10 @@ export class SimpleMultiplayer {
     });
 
     this.socket.on('playerHit', (data) => {
+      console.log('PlayerHit event:', data, 'My ID:', this.playerId);
       if (data.targetId === this.playerId) {
         // We got hit
+        console.log('I got hit! Health:', data.health);
         if (this.game.player) {
           this.game.player.health = data.health;
         }

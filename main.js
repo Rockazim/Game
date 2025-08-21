@@ -1239,10 +1239,11 @@ class Game {
       if (hitResult.hit) {
         if (hitResult.isPlayer && hitResult.playerId) {
           // Hit a player!
-          console.log(`Hit player! Damage: ${hitResult.damage}${hitResult.isHeadshot ? ' (HEADSHOT!)' : ''}`);
+          console.log(`Hit player! ID: ${hitResult.playerId}, Damage: ${hitResult.damage}${hitResult.isHeadshot ? ' (HEADSHOT!)' : ''}`);
           
           // Send hit event to server
           if (this.multiplayer && this.multiplayer.connected) {
+            console.log('Sending hit to server - targetId:', hitResult.playerId);
             this.multiplayer.sendHit(hitResult.playerId, hitResult.damage, this.weaponSystem.currentWeapon);
           }
           

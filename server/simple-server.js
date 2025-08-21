@@ -273,8 +273,12 @@ io.on('connection', (socket) => {
 
   // Hit detection (simplified)
   socket.on('hit', (data) => {
+    console.log('Hit event received:', data);
     const player = players.get(socket.id);
     const target = Array.from(players.values()).find(p => p.id === data.targetId);
+    
+    console.log('Shooter:', player?.username, player?.id);
+    console.log('Target found:', target?.username, target?.id);
     
     if (!player || !target || player.roomId !== target.roomId) return;
 

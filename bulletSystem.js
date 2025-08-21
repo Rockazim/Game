@@ -5,6 +5,7 @@ export class BulletSystem {
     this.scene = scene;
     this.camera = camera;
     this.raycaster = new THREE.Raycaster();
+    this.raycaster.camera = camera; // Set camera for sprite raycasting
     this.impacts = [];
     this.maxImpacts = 50;
     this.trails = [];
@@ -107,23 +108,53 @@ export class BulletSystem {
       return this.meleeAttack(weaponData, remotePlayers);
     }
     
-    // Calculate spread based on accuracy
-    const spread = (1 - weaponData.accuracy) * 0.05;
-    const spreadX = (Math.random() - 0.5) * spread;
-    const spreadY = (Math.random() - 0.5) * spread;
+    // Use pre-calculated origin and direction if provided (from weaponSystem)
+    // Otherwise calculate them here (for backward compatibility)
+    let origin, direction;
     
-    // Set up ray from camera center with spread
-    const direction = new THREE.Vector3(spreadX, spreadY, -1);
-    direction.unproject(this.camera);
-    direction.sub(this.camera.position).normalize();
+    if (weaponData.origin && weaponData.direction) {
+      origin = weaponData.origin;
+      direction = weaponData.direction;
+    } else {
+      // Fallback: Calculate spread based on accuracy
+      const spread = (1 - weaponData.accuracy) * 0.05;
+      const spreadX = (Math.random() - 0.5) * spread;
+      const spreadY = (Math.random() - 0.5) * spread;
+      
+      // Set up ray from camera center with spread
+      direction = new THREE.Vector3(spreadX, spreadY, -1);
+      direction.unproject(this.camera);
+      direction.sub(this.camera.position).normalize();
+      origin = this.camera.position;
+    }
     
-    this.raycaster.set(this.camera.position, direction);
+    this.raycaster.set(origin, direction);
     this.raycaster.far = weaponData.range;
     
     // First check for hits on remote players
     if (remotePlayers && remotePlayers.size > 0) {
       const playerMeshes = Array.from(remotePlayers.values());
-      const playerIntersects = this.raycaster.intersectObjects(playerMeshes, true);
+      
+      // Filter out null meshes and create a list of valid targets (excluding sprites)
+      const validTargets = [];
+      playerMeshes.forEach(mesh => {
+        if (mesh && mesh.matrixWorld) {
+          // Add the main mesh if it's not a sprite
+          if (!(mesh instanceof THREE.Sprite)) {
+            validTargets.push(mesh);
+          }
+          // Add non-sprite children
+          if (mesh.children) {
+            mesh.children.forEach(child => {
+              if (child && child.matrixWorld && !(child instanceof THREE.Sprite)) {
+                validTargets.push(child);
+              }
+            });
+          }
+        }
+      });
+      
+      const playerIntersects = validTargets.length > 0 ? this.raycaster.intersectObjects(validTargets, false) : [];
       
       if (playerIntersects.length > 0) {
         const hit = playerIntersects[0];
@@ -131,7 +162,7 @@ export class BulletSystem {
         // Find which player was hit
         let hitPlayerId = null;
         for (const [playerId, mesh] of remotePlayers.entries()) {
-          if (mesh === hit.object || mesh.children.includes(hit.object)) {
+          if (mesh === hit.object || (mesh.children && mesh.children.includes(hit.object))) {
             hitPlayerId = playerId;
             break;
           }
@@ -219,7 +250,27 @@ export class BulletSystem {
     // First check for hits on remote players
     if (remotePlayers && remotePlayers.size > 0) {
       const playerMeshes = Array.from(remotePlayers.values());
-      const playerIntersects = this.raycaster.intersectObjects(playerMeshes, true);
+      
+      // Filter out null meshes and create a list of valid targets (excluding sprites)
+      const validTargets = [];
+      playerMeshes.forEach(mesh => {
+        if (mesh && mesh.matrixWorld) {
+          // Add the main mesh if it's not a sprite
+          if (!(mesh instanceof THREE.Sprite)) {
+            validTargets.push(mesh);
+          }
+          // Add non-sprite children
+          if (mesh.children) {
+            mesh.children.forEach(child => {
+              if (child && child.matrixWorld && !(child instanceof THREE.Sprite)) {
+                validTargets.push(child);
+              }
+            });
+          }
+        }
+      });
+      
+      const playerIntersects = validTargets.length > 0 ? this.raycaster.intersectObjects(validTargets, false) : [];
       
       if (playerIntersects.length > 0) {
         const hit = playerIntersects[0];
@@ -227,7 +278,7 @@ export class BulletSystem {
         // Find which player was hit
         let hitPlayerId = null;
         for (const [playerId, mesh] of remotePlayers.entries()) {
-          if (mesh === hit.object || mesh.children.includes(hit.object)) {
+          if (mesh === hit.object || (mesh.children && mesh.children.includes(hit.object))) {
             hitPlayerId = playerId;
             break;
           }
