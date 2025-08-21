@@ -12,11 +12,14 @@ export class SimpleMultiplayer {
     
     // Determine server URL based on environment
     if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-      // Local development - connect to local server
+      // Local development - connect to local server directly
       this.serverUrl = 'http://localhost:3000';
-    } else if (window.location.hostname === 'hyperfps.xyz') {
-      // Production - connect to production server
-      this.serverUrl = 'https://hyperfps.xyz:3000';
+    } else if (window.location.hostname === 'hyperfps.xyz' || window.location.hostname === 'www.hyperfps.xyz') {
+      // Production - connect through nginx proxy (no port needed)
+      this.serverUrl = 'https://hyperfps.xyz';
+    } else if (window.location.hostname === '137.184.228.68') {
+      // Direct IP access
+      this.serverUrl = 'https://137.184.228.68';
     } else {
       // Fallback to same origin
       this.serverUrl = window.location.origin;

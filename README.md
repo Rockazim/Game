@@ -67,30 +67,84 @@ npm run dev
 
 ## Playing on HyperFPS.xyz
 
-The game is designed to be deployed on **hyperfps.xyz** for online multiplayer gaming!
+🎮 **Play Now: [https://hyperfps.xyz](https://hyperfps.xyz)**
 
-### For Players
-Simply visit `https://hyperfps.xyz` in your browser to play online with others around the world.
+The game is live and running on hyperfps.xyz! Join other players online for multiplayer FPS action.
 
-### For Deployment (Server Admin)
+## Production Server (Digital Ocean VPS)
 
-1. **Deploy the server** on your hosting service:
+This repository is deployed on a Digital Ocean VPS that hosts both the game client and multiplayer server.
+
+### Server Architecture
+- **Web Server**: Nginx with SSL (serves game files and proxies WebSocket)
+- **Game Files**: Deployed to `/var/www/fps-game/`
+- **Multiplayer Server**: Node.js running on port 3000 (localhost only)
+- **Domain**: hyperfps.xyz with Let's Encrypt SSL certificate
+
+### For Developers - Updating the Live Game
+
+1. **SSH into the server**:
 ```bash
-cd server
-npm install
-PORT=3000 npm start  # or use npm run simple for no-auth version
+ssh root@hyperfps.xyz
+cd /root/Game
 ```
 
-2. **Build and deploy the client**:
+2. **Pull latest changes**:
 ```bash
+git pull origin main
+```
+
+3. **Deploy the update**:
+```bash
+./deploy.sh
+```
+
+This will automatically:
+- Build the production version
+- Deploy to `/var/www/fps-game/`
+- Restart the multiplayer server
+- Clear CDN cache (if applicable)
+
+### Manual Deployment Steps
+
+If you need to deploy manually:
+
+```bash
+# 1. Build the game
 npm run build
-# Upload contents of 'dist' folder to your web server
+
+# 2. Deploy to web directory
+sudo cp -r dist/* /var/www/fps-game/
+sudo chown -R www-data:www-data /var/www/fps-game/
+
+# 3. Restart the multiplayer server
+sudo systemctl restart hyperfps-server
+
+# 4. Check server status
+sudo systemctl status hyperfps-server
 ```
 
-3. **Configure your domain**:
-- Point hyperfps.xyz to your web server
-- Ensure port 3000 is open for WebSocket connections
-- Use HTTPS for production (configure SSL certificates)
+### Server Management
+
+**Check server logs**:
+```bash
+sudo journalctl -u hyperfps-server -f
+```
+
+**Restart server**:
+```bash
+sudo systemctl restart hyperfps-server
+```
+
+**Stop server**:
+```bash
+sudo systemctl stop hyperfps-server
+```
+
+**Start server**:
+```bash
+sudo systemctl start hyperfps-server
+```
 
 ## How to Test Multiplayer Locally
 

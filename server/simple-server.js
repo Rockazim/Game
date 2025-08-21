@@ -21,7 +21,12 @@ const httpServer = createServer(app);
 // Initialize Socket.io with security config
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.ALLOWED_ORIGINS?.split(',') || ['http://localhost:5173'],
+    origin: process.env.ALLOWED_ORIGINS?.split(',') || [
+      'http://localhost:5173',
+      'https://hyperfps.xyz',
+      'https://www.hyperfps.xyz',
+      'https://137.184.228.68'
+    ],
     credentials: true
   },
   transports: ['websocket', 'polling'],
@@ -365,9 +370,15 @@ function isValidPosition(pos) {
 
 // Start server
 const PORT = process.env.PORT || 3000;
-httpServer.listen(PORT, '0.0.0.0', () => {
-  console.log(`🎮 HyperFPS Server running on port ${PORT}`);
-  console.log(`🌐 Domain: hyperfps.xyz`);
+const HOST = process.env.NODE_ENV === 'production' ? '127.0.0.1' : '0.0.0.0';
+
+httpServer.listen(PORT, HOST, () => {
+  console.log(`🎮 HyperFPS Server running on ${HOST}:${PORT}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || 'development'}`);
+  if (process.env.NODE_ENV === 'production') {
+    console.log(`🌐 Domain: https://hyperfps.xyz`);
+    console.log(`🔒 Server bound to localhost only (nginx proxy required)`);
+  }
   console.log(`✅ No authentication required - just enter username!`);
 });
 

@@ -1,0 +1,31 @@
+[Unit]
+Description=HyperFPS Multiplayer Game Server
+Documentation=https://github.com/Rockazim/Game
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/Game/server
+ExecStart=/usr/bin/node /root/Game/server/simple-server.js
+Restart=always
+RestartSec=10
+
+# Environment variables
+Environment="NODE_ENV=production"
+Environment="PORT=3000"
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=hyperfps-server
+
+# Security settings (optional, can be adjusted)
+# NoNewPrivileges=true
+# PrivateTmp=true
+
+# Resource limits
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target
