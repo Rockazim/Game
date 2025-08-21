@@ -7,9 +7,12 @@ export class BulletSystem {
     this.raycaster = new THREE.Raycaster();
     this.impacts = [];
     this.maxImpacts = 50;
+    this.trails = [];
+    this.maxTrails = 20;
     
     // Create impact effect pool
     this.createImpactPool();
+    this.createTrailPool();
   }
   
   createImpactPool() {
@@ -30,6 +33,73 @@ export class BulletSystem {
         lifetime: 0
       });
     }
+  }
+  
+  createTrailPool() {
+    // Pre-create trail objects for performance
+    for (let i = 0; i < this.maxTrails; i++) {
+      const points = [new THREE.Vector3(), new THREE.Vector3()];
+      const geometry = new THREE.BufferGeometry().setFromPoints(points);
+      const material = new THREE.LineBasicMaterial({
+        color: 0xffff00,
+        transparent: true,
+        opacity: 0
+      });
+      
+      const trail = new THREE.Line(geometry, material);
+      trail.visible = false;
+      this.scene.add(trail);
+      
+      this.trails.push({
+        mesh: trail,
+        active: false,
+        opacity: 0
+      });
+    }
+  }
+  
+  createTrail(position, direction) {
+    // Find an inactive trail
+    const trail = this.trails.find(t => !t.active);
+    if (!trail) return null;
+    
+    // Calculate end point
+    const start = new THREE.Vector3(
+      position.x || 0,
+      position.y || 0,
+      position.z || 0
+    );
+    const dir = new THREE.Vector3(
+      direction.x || 0,
+      direction.y || -1,
+      direction.z || 0
+    ).normalize();
+    const end = start.clone().add(dir.multiplyScalar(50));
+    
+    // Update trail geometry
+    const positions = trail.mesh.geometry.attributes.position.array;
+    positions[0] = start.x;
+    positions[1] = start.y;
+    positions[2] = start.z;
+    positions[3] = end.x;
+    positions[4] = end.y;
+    positions[5] = end.z;
+    trail.mesh.geometry.attributes.position.needsUpdate = true;
+    
+    // Activate trail
+    trail.active = true;
+    trail.opacity = 0.5;
+    trail.mesh.material.opacity = 0.5;
+    trail.mesh.visible = true;
+    
+    // Fade out
+    setTimeout(() => {
+      trail.active = false;
+      trail.mesh.visible = false;
+      trail.mesh.material.opacity = 0;
+    }, 100);
+    
+    return trail.mesh;
   }
   
   shoot(weaponData, mapColliders) {

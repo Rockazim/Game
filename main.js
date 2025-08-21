@@ -4,6 +4,7 @@ import { WeaponSystem } from './weaponSystem.js';
 import { BulletSystem } from './bulletSystem.js';
 import { Crosshair } from './crosshair.js';
 import { HUD } from './hud.js';
+import { SimpleMultiplayer } from './src/simple-multiplayer.js';
 
 class Game {
   constructor() {
@@ -11,6 +12,17 @@ class Game {
     this.settings = {
       leftHanded: false, // Can be toggled to switch arm visibility
       debugCollisions: false // Toggle with 'G' to see collision bounds
+    };
+    
+    // Multiplayer
+    this.multiplayer = null;
+    this.remotePlayers = new Map();
+    
+    // Player properties
+    this.player = {
+      health: 100,
+      position: null, // Will be set to character position
+      currentWeapon: 'pistol'
     };
     
     // Movement variables
@@ -123,6 +135,9 @@ class Game {
   createCharacter() {
     // Create character group
     this.character = new THREE.Group();
+    
+    // Link player position reference
+    this.player.position = this.character.position;
     
     // Create view model group (arms that follow camera)
     this.viewModel = new THREE.Group();
@@ -789,6 +804,21 @@ class Game {
         this.viewModel.visible = true;
       }
     }
+    
+    // Send position updates to server
+    if (this.multiplayer && this.multiplayer.connected && this.multiplayer.roomId) {
+      // Send position every few frames to reduce network traffic
+      if (!this.lastNetworkUpdate || Date.now() - this.lastNetworkUpdate > 50) {
+        this.multiplayer.sendMovement(
+          this.character.position,
+          { x: this.targetRotationY, y: this.targetRotationX }
+        );
+        this.lastNetworkUpdate = Date.now();
+      }
+      
+      // Update remote players
+      this.multiplayer.updatePlayers(deltaTime);
+    }
 
     this.renderer.render(this.scene, this.camera);
   }
@@ -1185,6 +1215,15 @@ class Game {
     
     const shotData = this.weaponSystem.fire();
     if (shotData) {
+      // Send shooting event to server
+      if (this.multiplayer && this.multiplayer.connected && this.multiplayer.roomId) {
+        this.multiplayer.sendShoot(
+          shotData.origin,
+          shotData.direction,
+          this.weaponSystem.currentWeapon
+        );
+      }
+      
       // Perform hit detection
       const hitResult = this.bulletSystem.shoot(shotData, this.mapLoader.getColliders());
       
@@ -1197,6 +1236,251 @@ class Game {
       }
     }
   }
+  
+  // Multiplayer methods
+  initMultiplayer() {
+    this.multiplayer = new SimpleMultiplayer(this);
+    
+    // Prompt for username
+    const username = prompt('Enter your username:') || `Player${Math.floor(Math.random() * 9999)}`;
+    
+    // Connect to server
+    this.multiplayer.connect(username);
+    
+    // Add UI for room management
+    this.createMultiplayerUI();
+  }
+  
+  createMultiplayerUI() {
+    // Create a simple UI overlay for multiplayer
+    const ui = document.createElement('div');
+    ui.id = 'multiplayer-ui';
+    ui.style.cssText = `
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      color: white;
+      font-family: monospace;
+      font-size: 14px;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 5px;
+      z-index: 1000;
+    `;
+    
+    ui.innerHTML = `
+      <div id="connection-status">Connecting...</div>
+      <div id="room-controls" style="margin-top: 10px;">
+        <button id="create-room" style="margin-right: 5px;">Create Room</button>
+        <button id="join-room">Join Room</button>
+        <div id="room-list" style="margin-top: 10px;"></div>
+      </div>
+      <div id="room-info" style="display: none; margin-top: 10px;">
+        <div>Room: <span id="current-room"></span></div>
+        <div>Players: <span id="player-count">0</span></div>
+        <button id="leave-room">Leave Room</button>
+      </div>
+    `;
+    
+    document.body.appendChild(ui);
+    
+    // Store UI reference
+    this.ui = {
+      connectionStatus: document.getElementById('connection-status'),
+      roomControls: document.getElementById('room-controls'),
+      roomInfo: document.getElementById('room-info'),
+      roomList: document.getElementById('room-list'),
+      
+      showRoomList: (rooms) => {
+        if (!rooms || rooms.length === 0) {
+          this.ui.roomList.innerHTML = '<div>No rooms available</div>';
+          return;
+        }
+        
+        this.ui.roomList.innerHTML = rooms.map(room => `
+          <div style="margin: 5px 0;">
+            ${room.name} (${room.players}/${room.maxPlayers})
+            <button onclick="game.joinRoom('${room.id}')" style="margin-left: 10px;">Join</button>
+          </div>
+        `).join('');
+      },
+      
+      hideRoomList: () => {
+        this.ui.roomControls.style.display = 'none';
+        this.ui.roomInfo.style.display = 'block';
+      },
+      
+      showNotification: (message) => {
+        console.log(`[Notification] ${message}`);
+      },
+      
+      showError: (message) => {
+        console.error(`[Error] ${message}`);
+      },
+      
+      showDisconnected: () => {
+        this.ui.connectionStatus.textContent = 'Disconnected';
+        this.ui.connectionStatus.style.color = 'red';
+      }
+    };
+    
+    // Set up button handlers
+    document.getElementById('create-room').addEventListener('click', () => {
+      const roomName = prompt('Enter room name:') || 'New Room';
+      this.multiplayer.createRoom(roomName, 10);
+    });
+    
+    document.getElementById('join-room').addEventListener('click', () => {
+      const roomId = prompt('Enter room ID:');
+      if (roomId) {
+        this.multiplayer.joinRoom(roomId);
+      }
+    });
+    
+    document.getElementById('leave-room').addEventListener('click', () => {
+      this.multiplayer.leaveRoom();
+      this.ui.roomControls.style.display = 'block';
+      this.ui.roomInfo.style.display = 'none';
+    });
+    
+    // Update connection status
+    setTimeout(() => {
+      if (this.multiplayer && this.multiplayer.connected) {
+        this.ui.connectionStatus.textContent = 'Connected';
+        this.ui.connectionStatus.style.color = 'lime';
+      }
+    }, 1000);
+  }
+  
+  joinRoom(roomId) {
+    if (this.multiplayer) {
+      this.multiplayer.joinRoom(roomId);
+    }
+  }
+  
+  createRemotePlayer(playerData) {
+    // Create a simple player mesh
+    const playerGeometry = new THREE.CapsuleGeometry(0.5, 1.8, 4, 8);
+    const playerMaterial = new THREE.MeshStandardMaterial({ 
+      color: new THREE.Color().setHSL(Math.random(), 0.7, 0.5),
+      roughness: 0.7,
+      metalness: 0.0
+    });
+    
+    const playerMesh = new THREE.Mesh(playerGeometry, playerMaterial);
+    playerMesh.position.set(
+      playerData.position?.x || 0,
+      (playerData.position?.y || 0) + 1.4,
+      playerData.position?.z || 0
+    );
+    
+    // Add name label
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = 'white';
+    ctx.font = '32px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText(playerData.username || 'Player', 128, 40);
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    const spriteMaterial = new THREE.SpriteMaterial({ map: texture });
+    const sprite = new THREE.Sprite(spriteMaterial);
+    sprite.scale.set(2, 0.5, 1);
+    sprite.position.y = 2;
+    playerMesh.add(sprite);
+    
+    this.scene.add(playerMesh);
+    this.remotePlayers.set(playerData.id, playerMesh);
+    
+    return playerMesh;
+  }
+  
+  removeRemotePlayer(playerMesh) {
+    this.scene.remove(playerMesh);
+    // Find and remove from map
+    for (const [id, mesh] of this.remotePlayers.entries()) {
+      if (mesh === playerMesh) {
+        this.remotePlayers.delete(id);
+        break;
+      }
+    }
+  }
+  
+  showRemoteShot(data) {
+    // Show shooting effect from remote player
+    if (this.bulletSystem) {
+      // Create a visual bullet trail
+      const trail = this.bulletSystem.createTrail(data.position, data.direction);
+      if (trail) {
+        this.scene.add(trail);
+        setTimeout(() => this.scene.remove(trail), 100);
+      }
+    }
+  }
+  
+  showHitEffect() {
+    // Flash red overlay when hit
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: red;
+      opacity: 0.3;
+      pointer-events: none;
+      z-index: 999;
+    `;
+    document.body.appendChild(overlay);
+    
+    setTimeout(() => {
+      overlay.style.opacity = '0';
+      overlay.style.transition = 'opacity 0.5s';
+      setTimeout(() => document.body.removeChild(overlay), 500);
+    }, 100);
+  }
+  
+  handleDeath(killerName) {
+    console.log(`You were killed by ${killerName}`);
+    // Show death screen
+    const deathScreen = document.createElement('div');
+    deathScreen.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.8);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      font-family: monospace;
+      font-size: 24px;
+      z-index: 9999;
+    `;
+    deathScreen.innerHTML = `
+      <div>YOU DIED</div>
+      <div style="font-size: 18px; margin-top: 10px;">Killed by ${killerName}</div>
+      <div style="font-size: 14px; margin-top: 20px;">Respawning in 3 seconds...</div>
+    `;
+    document.body.appendChild(deathScreen);
+    
+    setTimeout(() => {
+      document.body.removeChild(deathScreen);
+    }, 3000);
+  }
 }
 
-new Game();
+// Create game instance and store globally for UI access
+const game = new Game();
+window.game = game;
+
+// Initialize multiplayer after a short delay
+setTimeout(() => {
+  game.initMultiplayer();
+}, 1000);

@@ -9,7 +9,18 @@ export class SimpleMultiplayer {
     this.username = null;
     this.roomId = null;
     this.players = new Map();
-    this.serverUrl = window.location.origin;
+    
+    // Determine server URL based on environment
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      // Local development - connect to local server
+      this.serverUrl = 'http://localhost:3000';
+    } else if (window.location.hostname === 'hyperfps.xyz') {
+      // Production - connect to production server
+      this.serverUrl = 'https://hyperfps.xyz:3000';
+    } else {
+      // Fallback to same origin
+      this.serverUrl = window.location.origin;
+    }
   }
 
   connect(username) {
