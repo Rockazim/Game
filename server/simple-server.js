@@ -278,9 +278,15 @@ io.on('connection', (socket) => {
     const target = Array.from(players.values()).find(p => p.id === data.targetId);
     
     console.log('Shooter:', player?.username, player?.id);
-    console.log('Target found:', target?.username, target?.id);
+    console.log('Target found:', target?.username, target?.id, 'isDead:', target?.isDead);
     
     if (!player || !target || player.roomId !== target.roomId) return;
+    
+    // Don't process hits on dead players
+    if (target.isDead) {
+      console.log('Target is already dead, ignoring hit');
+      return;
+    }
 
     // Apply damage
     target.health = Math.max(0, target.health - (data.damage || 25));

@@ -167,6 +167,20 @@ export class SimpleMultiplayer {
         }
         // Show kill notification
         this.showKillNotification(`You killed ${data.victimName}!`);
+      } else {
+        // Another player died - hide their model
+        const deadPlayer = this.players.get(data.victimId);
+        if (deadPlayer) {
+          deadPlayer.isDead = true;
+          if (deadPlayer.mesh) {
+            // Make the dead player semi-transparent and darker
+            deadPlayer.mesh.visible = false;
+            // Remove from remotePlayers map so they can't be hit
+            if (this.game.remotePlayers) {
+              this.game.remotePlayers.delete(data.victimId);
+            }
+          }
+        }
       }
       
       // Show kill feed for everyone
@@ -190,6 +204,13 @@ export class SimpleMultiplayer {
         const player = this.players.get(data.id);
         if (player && player.mesh) {
           player.mesh.position.set(data.position.x, data.position.y, data.position.z);
+          player.mesh.visible = true;
+          player.isDead = false;
+          
+          // Re-add to remotePlayers map so they can be hit again
+          if (this.game.remotePlayers) {
+            this.game.remotePlayers.set(data.id, player.mesh);
+          }
         }
       }
     });
@@ -320,7 +341,8 @@ export class SimpleMultiplayer {
       ...playerData,
       mesh,
       targetPosition: playerData.position,
-      targetRotation: playerData.rotation || { x: 0, y: 0 }
+      targetRotation: playerData.rotation || { x: 0, y: 0 },
+      isDead: false
     });
   }
 
