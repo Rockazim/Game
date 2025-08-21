@@ -634,9 +634,12 @@ export class PlayerModel {
     this.root.traverse((child) => {
       if (child.geometry) child.geometry.dispose();
       if (child.material) {
+        // Check if it's actually a material object with dispose method
         if (Array.isArray(child.material)) {
-          child.material.forEach(mat => mat.dispose());
-        } else {
+          child.material.forEach(mat => {
+            if (mat && mat.dispose) mat.dispose();
+          });
+        } else if (child.material && child.material.dispose) {
           child.material.dispose();
         }
       }
@@ -648,8 +651,10 @@ export class PlayerModel {
         if (child.geometry) child.geometry.dispose();
         if (child.material) {
           if (Array.isArray(child.material)) {
-            child.material.forEach(mat => mat.dispose());
-          } else {
+            child.material.forEach(mat => {
+              if (mat && mat.dispose) mat.dispose();
+            });
+          } else if (child.material && child.material.dispose) {
             child.material.dispose();
           }
         }

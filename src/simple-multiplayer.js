@@ -264,33 +264,43 @@ export class SimpleMultiplayer {
   sendMovement(position, rotation) {
     if (!this.connected || !this.roomId) return;
     
+    // Ensure we're sending plain objects, not Three.js objects
+    const posObj = position && typeof position === 'object' ? {
+      x: position.x || 0,
+      y: position.y || 0,
+      z: position.z || 0
+    } : { x: 0, y: 0, z: 0 };
+    
+    const rotObj = rotation && typeof rotation === 'object' ? {
+      x: rotation.x || 0,
+      y: rotation.y || 0
+    } : { x: 0, y: 0 };
+    
     this.socket.emit('move', {
-      position: {
-        x: position.x,
-        y: position.y,
-        z: position.z
-      },
-      rotation: {
-        x: rotation.x,
-        y: rotation.y
-      }
+      position: posObj,
+      rotation: rotObj
     });
   }
 
   sendShoot(position, direction, weapon) {
     if (!this.connected || !this.roomId) return;
     
+    // Ensure we're sending plain objects, not Three.js objects
+    const posObj = position && typeof position === 'object' ? {
+      x: position.x || 0,
+      y: position.y || 0,
+      z: position.z || 0
+    } : { x: 0, y: 0, z: 0 };
+    
+    const dirObj = direction && typeof direction === 'object' ? {
+      x: direction.x || 0,
+      y: direction.y || 0,
+      z: direction.z || 0
+    } : { x: 0, y: 0, z: 0 };
+    
     this.socket.emit('shoot', {
-      position: {
-        x: position.x,
-        y: position.y,
-        z: position.z
-      },
-      direction: {
-        x: direction.x,
-        y: direction.y,
-        z: direction.z
-      },
+      position: posObj,
+      direction: dirObj,
       weapon
     });
   }
