@@ -109,7 +109,8 @@ io.on('connection', (socket) => {
       currentWeapon: 'pistol',
       roomId: null,
       kills: 0,
-      deaths: 0
+      deaths: 0,
+      isDead: false
     };
 
     players.set(socket.id, player);
@@ -301,21 +302,33 @@ io.on('connection', (socket) => {
         weapon: data.weapon
       });
 
-      // Respawn after 3 seconds
-      setTimeout(() => {
-        if (players.has(target.socketId)) {
-          target.health = 100;
-          target.position = getSpawnPosition();
-          
-          io.to(target.roomId).emit('playerRespawned', {
-            id: target.id,
-            position: target.position
-          });
-        }
-      }, 3000);
+      // Mark player as dead (don't auto-respawn)
+      target.isDead = true;
     }
   });
 
+  // Manual respawn request
+  socket.on('requestRespawn', () => {
+    const player = players.get(socket.id);
+    if (!player || !player.roomId) return;
+    
+    // Only respawn if dead
+    if (!player.isDead) return;
+    
+    // Respawn player
+    player.health = 100;
+    player.isDead = false;
+    player.position = getSpawnPosition();
+    
+    // Notify all players in room
+    io.to(player.roomId).emit('playerRespawned', {
+      id: player.id,
+      position: player.position
+    });
+    
+    console.log(`${player.username} respawned`);
+  });
+  
   // Chat
   socket.on('chat', (data) => {
     const player = players.get(socket.id);

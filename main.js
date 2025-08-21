@@ -22,7 +22,10 @@ class Game {
     this.player = {
       health: 100,
       position: null, // Will be set to character position
-      currentWeapon: 'pistol'
+      currentWeapon: 'pistol',
+      isDead: false,
+      kills: 0,
+      deaths: 0
     };
     
     // Movement variables
@@ -826,6 +829,9 @@ class Game {
   updateMovement(deltaTime) {
     if (!this.character) return;
     
+    // Don't move if dead
+    if (this.player.isDead) return;
+    
     // Handle crouching
     if (this.keys.crouch && this.isOnGround) {
       this.isCrouching = true;
@@ -1213,6 +1219,9 @@ class Game {
   handleShooting() {
     if (!this.weaponSystem || !this.bulletSystem) return;
     
+    // Don't shoot if dead
+    if (this.player.isDead) return;
+    
     const shotData = this.weaponSystem.fire();
     if (shotData) {
       // Send shooting event to server
@@ -1224,14 +1233,29 @@ class Game {
         );
       }
       
-      // Perform hit detection
-      const hitResult = this.bulletSystem.shoot(shotData, this.mapLoader.getColliders());
+      // Perform hit detection (pass remote players for checking)
+      const hitResult = this.bulletSystem.shoot(shotData, this.mapLoader.getColliders(), this.remotePlayers);
       
       if (hitResult.hit) {
-        console.log(`Hit at distance: ${hitResult.distance.toFixed(2)}m, Damage: ${hitResult.damage}`);
-        // Show hit marker
-        if (this.hud) {
-          this.hud.showHitMarker();
+        if (hitResult.isPlayer && hitResult.playerId) {
+          // Hit a player!
+          console.log(`Hit player! Damage: ${hitResult.damage}${hitResult.isHeadshot ? ' (HEADSHOT!)' : ''}`);
+          
+          // Send hit event to server
+          if (this.multiplayer && this.multiplayer.connected) {
+            this.multiplayer.sendHit(hitResult.playerId, hitResult.damage, this.weaponSystem.currentWeapon);
+          }
+          
+          // Show hit marker
+          if (this.hud) {
+            this.hud.showHitMarker(hitResult.isHeadshot);
+          }
+          
+          // Show damage number
+          this.showDamageNumber(hitResult.point, hitResult.damage, hitResult.isHeadshot);
+        } else {
+          // Hit environment
+          console.log(`Hit at distance: ${hitResult.distance.toFixed(2)}m`);
         }
       }
     }
@@ -1443,36 +1467,126 @@ class Game {
     }, 100);
   }
   
+  showDamageNumber(position, damage, isHeadshot) {
+    // Create floating damage text
+    const damageDiv = document.createElement('div');
+    damageDiv.style.cssText = `
+      position: fixed;
+      color: ${isHeadshot ? '#ff0000' : '#ffff00'};
+      font-family: monospace;
+      font-size: ${isHeadshot ? '28px' : '24px'};
+      font-weight: bold;
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      pointer-events: none;
+      z-index: 1000;
+      animation: floatUp 1s ease-out forwards;
+    `;
+    damageDiv.textContent = isHeadshot ? `${damage} HEADSHOT!` : damage;
+    
+    // Convert 3D position to screen position
+    const vector = position.clone();
+    vector.project(this.camera);
+    const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+    const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+    
+    damageDiv.style.left = `${x}px`;
+    damageDiv.style.top = `${y}px`;
+    
+    // Add CSS animation
+    if (!document.getElementById('damage-animation')) {
+      const style = document.createElement('style');
+      style.id = 'damage-animation';
+      style.textContent = `
+        @keyframes floatUp {
+          0% { transform: translateY(0); opacity: 1; }
+          100% { transform: translateY(-50px); opacity: 0; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(damageDiv);
+    setTimeout(() => document.body.removeChild(damageDiv), 1000);
+  }
+  
   handleDeath(killerName) {
     console.log(`You were killed by ${killerName}`);
-    // Show death screen
+    
+    // Set player as dead
+    this.player.isDead = true;
+    this.player.deaths++;
+    
+    // Disable controls
+    if (document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+    
+    // Show death screen with respawn button
     const deathScreen = document.createElement('div');
+    deathScreen.id = 'death-screen';
     deathScreen.style.cssText = `
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0,0,0,0.8);
+      background: rgba(0,0,0,0.85);
       color: white;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       font-family: monospace;
-      font-size: 24px;
       z-index: 9999;
     `;
+    
     deathScreen.innerHTML = `
-      <div>YOU DIED</div>
-      <div style="font-size: 18px; margin-top: 10px;">Killed by ${killerName}</div>
-      <div style="font-size: 14px; margin-top: 20px;">Respawning in 3 seconds...</div>
+      <div style="font-size: 48px; color: #ff0000; margin-bottom: 20px;">YOU DIED</div>
+      <div style="font-size: 24px; margin-bottom: 10px;">Killed by <span style="color: #ffaa00">${killerName}</span></div>
+      <div style="font-size: 18px; margin: 20px 0; color: #888;">
+        K/D: ${this.player.kills}/${this.player.deaths}
+      </div>
+      <button id="respawn-btn" style="
+        padding: 15px 30px;
+        font-size: 20px;
+        background: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 5px;
+        cursor: pointer;
+        margin-top: 20px;
+        font-family: monospace;
+      ">RESPAWN</button>
+      <div style="font-size: 14px; margin-top: 10px; color: #666;">
+        Press SPACE or click RESPAWN to continue
+      </div>
     `;
+    
     document.body.appendChild(deathScreen);
     
-    setTimeout(() => {
+    // Respawn button handler
+    const respawnBtn = document.getElementById('respawn-btn');
+    const handleRespawn = () => {
+      if (this.multiplayer && this.multiplayer.connected) {
+        this.multiplayer.requestRespawn();
+      }
       document.body.removeChild(deathScreen);
-    }, 3000);
+      this.player.isDead = false;
+      
+      // Re-enable controls
+      this.renderer.domElement.requestPointerLock();
+    };
+    
+    respawnBtn.addEventListener('click', handleRespawn);
+    
+    // Also allow spacebar to respawn
+    const spaceHandler = (e) => {
+      if (e.code === 'Space' && this.player.isDead) {
+        handleRespawn();
+        document.removeEventListener('keydown', spaceHandler);
+      }
+    };
+    document.addEventListener('keydown', spaceHandler);
   }
 }
 

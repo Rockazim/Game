@@ -102,9 +102,9 @@ export class BulletSystem {
     return trail.mesh;
   }
   
-  shoot(weaponData, mapColliders) {
+  shoot(weaponData, mapColliders, remotePlayers = null) {
     if (weaponData.isMelee) {
-      return this.meleeAttack(weaponData);
+      return this.meleeAttack(weaponData, remotePlayers);
     }
     
     // Calculate spread based on accuracy
@@ -120,15 +120,68 @@ export class BulletSystem {
     this.raycaster.set(this.camera.position, direction);
     this.raycaster.far = weaponData.range;
     
-    // Check for hits (exclude player's own collision objects)
+    // First check for hits on remote players
+    if (remotePlayers && remotePlayers.size > 0) {
+      const playerMeshes = Array.from(remotePlayers.values());
+      const playerIntersects = this.raycaster.intersectObjects(playerMeshes, true);
+      
+      if (playerIntersects.length > 0) {
+        const hit = playerIntersects[0];
+        
+        // Find which player was hit
+        let hitPlayerId = null;
+        for (const [playerId, mesh] of remotePlayers.entries()) {
+          if (mesh === hit.object || mesh.children.includes(hit.object)) {
+            hitPlayerId = playerId;
+            break;
+          }
+        }
+        
+        // Show impact effect
+        this.showImpact(hit.point, hit.face ? hit.face.normal : new THREE.Vector3(0, 1, 0));
+        
+        // Calculate damage with headshot bonus
+        let damage = weaponData.damage;
+        const headHeight = 1.6; // Approximate head position
+        if (hit.point.y > headHeight) {
+          damage = Math.round(damage * 2); // Double damage for headshot
+        }
+        
+        // Return player hit information
+        return {
+          hit: true,
+          point: hit.point,
+          distance: hit.distance,
+          object: hit.object,
+          damage: damage,
+          isPlayer: true,
+          playerId: hitPlayerId,
+          isHeadshot: hit.point.y > headHeight
+        };
+      }
+    }
+    
+    // Check for hits on map geometry
     const intersects = this.raycaster.intersectObjects(this.scene.children, true);
     
     let hit = null;
     for (const intersect of intersects) {
-      // Skip non-solid objects and UI elements
+      // Skip non-solid objects, UI elements, and player meshes
       if (intersect.object.userData && intersect.object.userData.ignoreRaycast) {
         continue;
       }
+      
+      // Skip remote player meshes (already checked)
+      let isPlayerMesh = false;
+      if (remotePlayers) {
+        for (const mesh of remotePlayers.values()) {
+          if (mesh === intersect.object || mesh.children.includes(intersect.object)) {
+            isPlayerMesh = true;
+            break;
+          }
+        }
+      }
+      if (isPlayerMesh) continue;
       
       hit = intersect;
       break;
@@ -144,7 +197,8 @@ export class BulletSystem {
         point: hit.point,
         distance: hit.distance,
         object: hit.object,
-        damage: weaponData.damage
+        damage: weaponData.damage,
+        isPlayer: false
       };
     }
     
@@ -154,7 +208,7 @@ export class BulletSystem {
     };
   }
   
-  meleeAttack(weaponData) {
+  meleeAttack(weaponData, remotePlayers = null) {
     // Melee attack - short range check in front of player
     const direction = new THREE.Vector3(0, 0, -1);
     direction.applyQuaternion(this.camera.quaternion);
@@ -162,16 +216,55 @@ export class BulletSystem {
     this.raycaster.set(this.camera.position, direction);
     this.raycaster.far = weaponData.range;
     
+    // First check for hits on remote players
+    if (remotePlayers && remotePlayers.size > 0) {
+      const playerMeshes = Array.from(remotePlayers.values());
+      const playerIntersects = this.raycaster.intersectObjects(playerMeshes, true);
+      
+      if (playerIntersects.length > 0) {
+        const hit = playerIntersects[0];
+        
+        // Find which player was hit
+        let hitPlayerId = null;
+        for (const [playerId, mesh] of remotePlayers.entries()) {
+          if (mesh === hit.object || mesh.children.includes(hit.object)) {
+            hitPlayerId = playerId;
+            break;
+          }
+        }
+        
+        // Check for backstab (double damage from behind)
+        let damage = weaponData.damage;
+        if (weaponData.backstabDamage) {
+          damage = weaponData.backstabDamage;
+        }
+        
+        return {
+          hit: true,
+          point: hit.point,
+          distance: hit.distance,
+          object: hit.object,
+          damage: damage,
+          isMelee: true,
+          isPlayer: true,
+          playerId: hitPlayerId
+        };
+      }
+    }
+    
+    // Check for hits on other objects
     const intersects = this.raycaster.intersectObjects(this.scene.children, true);
     
     if (intersects.length > 0) {
       const hit = intersects[0];
       
-      // Check for backstab (if hitting from behind)
-      let damage = weaponData.damage;
-      if (weaponData.backstabDamage && hit.object.userData && hit.object.userData.isEnemy) {
-        // Simple backstab check - would need enemy facing direction in real implementation
-        damage = weaponData.backstabDamage;
+      // Skip player meshes
+      if (remotePlayers) {
+        for (const mesh of remotePlayers.values()) {
+          if (mesh === hit.object || mesh.children.includes(hit.object)) {
+            return { hit: false, damage: 0, isMelee: true };
+          }
+        }
       }
       
       return {
@@ -179,8 +272,9 @@ export class BulletSystem {
         point: hit.point,
         distance: hit.distance,
         object: hit.object,
-        damage: damage,
-        isMelee: true
+        damage: weaponData.damage,
+        isMelee: true,
+        isPlayer: false
       };
     }
     

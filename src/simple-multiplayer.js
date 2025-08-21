@@ -158,9 +158,16 @@ export class SimpleMultiplayer {
         if (this.game.handleDeath) {
           this.game.handleDeath(data.killerName);
         }
+      } else if (data.killerId === this.playerId) {
+        // We got a kill!
+        if (this.game.player) {
+          this.game.player.kills++;
+        }
+        // Show kill notification
+        this.showKillNotification(`You killed ${data.victimName}!`);
       }
       
-      // Show kill notification
+      // Show kill feed for everyone
       if (this.game.ui) {
         this.game.ui.showKillNotification(data.killerName, data.victimName, data.weapon);
       }
@@ -280,6 +287,22 @@ export class SimpleMultiplayer {
     
     this.socket.emit('chat', { message });
   }
+  
+  sendHit(targetId, damage, weapon) {
+    if (!this.connected || !this.roomId) return;
+    
+    this.socket.emit('hit', {
+      targetId,
+      damage,
+      weapon
+    });
+  }
+  
+  requestRespawn() {
+    if (!this.connected || !this.roomId) return;
+    
+    this.socket.emit('requestRespawn');
+  }
 
   // Player management
   addRemotePlayer(playerData) {
@@ -339,6 +362,44 @@ export class SimpleMultiplayer {
     return current + delta * factor;
   }
 
+  showKillNotification(message) {
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      top: 20%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 255, 0, 0.2);
+      border: 2px solid #00ff00;
+      color: #00ff00;
+      padding: 10px 20px;
+      font-family: monospace;
+      font-size: 20px;
+      font-weight: bold;
+      border-radius: 5px;
+      z-index: 1000;
+      animation: fadeOut 3s ease-in-out forwards;
+    `;
+    notification.textContent = message;
+    
+    // Add fade animation
+    if (!document.getElementById('kill-animation')) {
+      const style = document.createElement('style');
+      style.id = 'kill-animation';
+      style.textContent = `
+        @keyframes fadeOut {
+          0% { opacity: 1; }
+          70% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    document.body.appendChild(notification);
+    setTimeout(() => document.body.removeChild(notification), 3000);
+  }
+  
   disconnect() {
     if (this.socket) {
       this.socket.disconnect();
