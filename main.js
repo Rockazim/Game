@@ -1583,12 +1583,9 @@ class Game {
         data.direction.z || 0
       );
       
-      // Create a visual bullet trail
-      const trail = this.bulletSystem.createTrail(position, direction);
-      if (trail) {
-        this.scene.add(trail);
-        setTimeout(() => this.scene.remove(trail), 100);
-      }
+      // Create a visual bullet trail - the trail manages its own lifecycle
+      // No need to add/remove from scene as trails are pre-added in the pool
+      this.bulletSystem.createTrail(position, direction);
     }
   }
   

@@ -34,3 +34,10 @@ This is a browser-based first-person shooter game inspired by krunker.io and CS:
 3. Keep weapon mechanics similar to CS:GO/krunker.io
 4. Use existing map.js patterns when adding new map elements
 5. Test with pointer lock enabled
+
+## Production Environment
+- **Live Site**: https://hyperfps.xyz
+- **Environment**: We are developing directly on the VPS
+- **Build Command**: `npm run build` (creates dist/ folder)
+- **Deployment**: User handles deployment - DO NOT deploy changes yourself
+- **Testing**: Use `npm run dev` for local testing on the VPS

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Shooting Test Results</title>
+    <style>
+        body {
+            font-family: monospace;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #00ff00;
+        }
+        h2 { color: #ffff00; }
+        .success { color: #00ff00; }
+        .warning { color: #ffaa00; }
+        .error { color: #ff0000; }
+    </style>
+</head>
+<body>
+    <h1>FPS Game - Shooting Mechanics Test</h1>
+    
+    <h2>✅ Fixed Issues:</h2>
+    <ul class="success">
+        <li>Automatic weapon firing mechanism - AK47 now fires continuously when holding mouse</li>
+        <li>Fire rate timing - Weapons respect their configured RPM</li>
+        <li>Mouse event handling - Both mousedown and mouseup properly handled</li>
+        <li>Bullet trail visualization - Enhanced with longer, more visible trails</li>
+        <li>Debug logging - Added console logs to track shooting events</li>
+    </ul>
+    
+    <h2>🔫 Weapon Configurations:</h2>
+    <ul>
+        <li><b>Pistol:</b> Semi-auto, 28 damage, 400 RPM, 17 rounds</li>
+        <li><b>AK-47:</b> Full-auto, 36 damage, 600 RPM, 30 rounds</li>
+        <li><b>Knife:</b> Melee, 100 damage (200 backstab), close range</li>
+    </ul>
+    
+    <h2>🎮 How to Test:</h2>
+    <ol>
+        <li>Open the game at <a href="http://localhost:5173" target="_blank">http://localhost:5173</a></li>
+        <li>Click to lock mouse pointer</li>
+        <li>Press 1 for Pistol - Click to shoot single shots</li>
+        <li>Press 2 for AK47 - Hold mouse button for automatic fire</li>
+        <li>Press 3 for Knife - Click for melee attack</li>
+        <li>Press R to reload when out of ammo</li>
+        <li>Open browser console (F12) to see debug logs</li>
+    </ol>
+    
+    <h2>📊 What to Look For:</h2>
+    <ul class="warning">
+        <li>Yellow bullet trails appearing when shooting</li>
+        <li>Muzzle flash on weapon</li>
+        <li>Impact effects on walls</li>
+        <li>Ammo counter decreasing in HUD</li>
+        <li>Console logs showing: "Starting shooting", "Fired [weapon]", "Stopping automatic fire"</li>
+        <li>Different fire rates between pistol and AK47</li>
+    </ul>
+    
+    <h2>🔧 Implementation Details:</h2>
+    <pre>
+    The shooting system now works as follows:
+    1. Mouse down triggers startShooting()
+    2. For automatic weapons, isAutoFiring flag is set
+    3. Update loop checks fire rate timing and calls fire()
+    4. Each shot creates bullet trail and checks hit detection
+    5. Mouse up triggers stopShooting() to stop auto-fire
+    </pre>
+</body>
+</html>

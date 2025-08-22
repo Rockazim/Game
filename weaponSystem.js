@@ -77,18 +77,25 @@ export class WeaponSystem {
   
   startShooting() {
     if (this.isSwitching || !this.currentWeapon) {
+      console.log('Cannot shoot: switching or no weapon');
       return false;
     }
+    
+    console.log(`Starting shooting with ${this.currentWeapon.config.name}`);
     
     // Check if weapon is automatic
     if (this.currentWeapon.config.isAutomatic) {
       this.isAutoFiring = true;
+      console.log('Automatic fire enabled');
     }
     
     return this.fire();
   }
   
   stopShooting() {
+    if (this.isAutoFiring) {
+      console.log('Stopping automatic fire');
+    }
     this.isAutoFiring = false;
   }
   
@@ -100,6 +107,7 @@ export class WeaponSystem {
     const success = this.currentWeapon.fire();
     
     if (success) {
+      console.log(`Fired ${this.currentWeapon.config.name} - Ammo: ${this.currentWeapon.currentAmmo}/${this.currentWeapon.reserveAmmo}`);
       // Calculate shot origin and direction for multiplayer
       const origin = this.camera.position.clone();
       
@@ -146,9 +154,20 @@ export class WeaponSystem {
     // Update current weapon
     this.currentWeapon.update(deltaTime, isMoving, isSprinting);
     
-    // Handle automatic fire
+    // Handle automatic fire with proper timing
     if (this.isAutoFiring && this.currentWeapon.config.isAutomatic) {
-      this.fire();
+      const now = Date.now();
+      const fireDelay = 60000 / this.currentWeapon.config.fireRate; // Convert RPM to ms
+      
+      // Check if enough time has passed since last fire
+      if (!this.lastAutoFireTime || now - this.lastAutoFireTime >= fireDelay) {
+        const shotData = this.fire();
+        if (shotData) {
+          this.lastAutoFireTime = now;
+          // Return shot data for main game loop to handle
+          this.lastShotData = shotData;
+        }
+      }
     }
   }
   
