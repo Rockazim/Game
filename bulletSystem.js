@@ -6,7 +6,9 @@ export class BulletSystem {
     this.camera = camera;
     this.hitboxSystem = hitboxSystem; // New hitbox system for accurate hit detection
     this.raycaster = new THREE.Raycaster();
-    this.raycaster.camera = camera; // Set camera for sprite raycasting
+    // Configure raycaster for better precision
+    this.raycaster.near = 0.1;
+    this.raycaster.far = 1000;
     this.impacts = [];
     this.maxImpacts = 50;
     this.trails = [];
@@ -63,20 +65,35 @@ export class BulletSystem {
   createTrail(position, direction) {
     // Find an inactive trail
     const trail = this.trails.find(t => !t.active);
-    if (!trail) return null;
+    if (!trail) {
+      console.log('No inactive trails available');
+      return null;
+    }
     
-    // Calculate end point
-    const start = new THREE.Vector3(
-      position.x || 0,
-      position.y || 0,
-      position.z || 0
-    );
-    const dir = new THREE.Vector3(
-      direction.x || 0,
-      direction.y || -1,
-      direction.z || 0
-    ).normalize();
-    const end = start.clone().add(dir.multiplyScalar(50));
+    // Ensure position and direction are Three.js Vector3 objects
+    let start, dir;
+    
+    if (position instanceof THREE.Vector3) {
+      start = position.clone();
+    } else {
+      start = new THREE.Vector3(
+        position?.x || 0,
+        position?.y || 0,
+        position?.z || 0
+      );
+    }
+    
+    if (direction instanceof THREE.Vector3) {
+      dir = direction.clone().normalize();
+    } else {
+      dir = new THREE.Vector3(
+        direction?.x || 0,
+        direction?.y || 0,
+        direction?.z || -1
+      ).normalize();
+    }
+    
+    const end = start.clone().add(dir.multiplyScalar(100)); // Longer trail
     
     // Update trail geometry
     const positions = trail.mesh.geometry.attributes.position.array;
@@ -88,18 +105,29 @@ export class BulletSystem {
     positions[5] = end.z;
     trail.mesh.geometry.attributes.position.needsUpdate = true;
     
-    // Activate trail
+    // Make trail more visible
     trail.active = true;
-    trail.opacity = 0.5;
-    trail.mesh.material.opacity = 0.5;
+    trail.opacity = 0.8; // More opaque
+    trail.mesh.material.opacity = 0.8;
+    trail.mesh.material.color.setHex(0xffff00); // Bright yellow
     trail.mesh.visible = true;
     
-    // Fade out
-    setTimeout(() => {
-      trail.active = false;
-      trail.mesh.visible = false;
-      trail.mesh.material.opacity = 0;
-    }, 100);
+    // Fade out animation
+    const fadeOut = () => {
+      trail.opacity -= 0.05;
+      trail.mesh.material.opacity = trail.opacity;
+      
+      if (trail.opacity <= 0) {
+        trail.active = false;
+        trail.mesh.visible = false;
+        trail.opacity = 0;
+      } else {
+        requestAnimationFrame(fadeOut);
+      }
+    };
+    
+    // Start fade after a short delay
+    setTimeout(fadeOut, 50);
     
     return trail.mesh;
   }
@@ -129,14 +157,20 @@ export class BulletSystem {
       origin = this.camera.position;
     }
     
+    // Create visual bullet trail
+    this.createTrail(origin, direction);
+    
     // Use the new hitbox system if available for accurate hit detection
     if (this.hitboxSystem && this.hitboxSystem.playerModels.size > 0) {
+      console.log('Using hitbox system for hit detection');
       const hitResult = this.hitboxSystem.checkHit(
         origin, 
         direction, 
         weaponData.range,
         'local' // Exclude local player from hit detection
       );
+      
+      console.log('Hitbox system result:', hitResult);
       
       if (hitResult && hitResult.hit) {
         // Calculate damage using hitbox system
@@ -173,12 +207,14 @@ export class BulletSystem {
     
     // If hitbox system didn't find a hit or isn't available, use fallback
     if (!this.hitboxSystem || this.hitboxSystem.playerModels.size === 0) {
+      console.log('Using fallback raycaster system - hitboxSystem:', !!this.hitboxSystem, 'models:', this.hitboxSystem?.playerModels?.size || 0);
       // Fallback to old system
       this.raycaster.set(origin, direction);
       this.raycaster.far = weaponData.range;
       
       // First check for hits on remote players
       if (remotePlayers && remotePlayers.size > 0) {
+        console.log('Remote players available:', remotePlayers.size);
         const playerMeshes = Array.from(remotePlayers.values());
         
         // Filter out null meshes and create a list of valid targets (excluding sprites)
@@ -200,16 +236,23 @@ export class BulletSystem {
           }
         });
         
-        const playerIntersects = validTargets.length > 0 ? this.raycaster.intersectObjects(validTargets, false) : [];
+        console.log('Valid targets for hit detection:', validTargets.length);
+        const playerIntersects = validTargets.length > 0 ? this.raycaster.intersectObjects(validTargets, true) : []; // Changed to recursive: true
+        
+        console.log('Player intersects found:', playerIntersects.length);
         
         if (playerIntersects.length > 0) {
           const hit = playerIntersects[0];
+          console.log('Hit object:', hit.object.type, 'Distance:', hit.distance);
           
           // Find which player was hit
           let hitPlayerId = null;
+          console.log('Checking hit against remote players...');
           for (const [playerId, mesh] of remotePlayers.entries()) {
+            console.log(`Checking player ${playerId}, mesh:`, mesh ? 'exists' : 'null');
             if (mesh === hit.object || (mesh.children && mesh.children.includes(hit.object))) {
               hitPlayerId = playerId;
+              console.log(`Found hit on player: ${playerId}`);
               break;
             }
           }

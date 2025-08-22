@@ -772,6 +772,12 @@ class Game {
         const isMoving = this.keys.forward || this.keys.backward || this.keys.left || this.keys.right;
         this.weaponSystem.update(deltaTime, isMoving, this.keys.sprint);
         
+        // Check if weapon system has a shot to process (from automatic fire)
+        if (this.weaponSystem.lastShotData) {
+          this.processShotData(this.weaponSystem.lastShotData);
+          this.weaponSystem.lastShotData = null;
+        }
+        
         // Add weapon sway from movement
         if (isMoving) {
           const swayAmount = this.keys.sprint ? 0.01 : 0.005;
@@ -1247,93 +1253,105 @@ class Game {
     
     const shotData = this.weaponSystem.fire();
     if (shotData) {
-      // Send shooting event to server
-      if (this.multiplayer && this.multiplayer.connected && this.multiplayer.roomId) {
-        // Convert Three.js Vector3 objects to plain objects
-        this.multiplayer.sendShoot(
-          {
-            x: shotData.origin.x,
-            y: shotData.origin.y,
-            z: shotData.origin.z
-          },
-          {
-            x: shotData.direction.x,
-            y: shotData.direction.y,
-            z: shotData.direction.z
-          },
-          this.weaponSystem.currentWeapon
-        );
-      }
-      
-      // Perform hit detection (pass remote players for checking)
-      const hitResult = this.bulletSystem.shoot(shotData, this.mapLoader.getColliders(), this.remotePlayers);
-      
-      if (hitResult.hit) {
-        if (hitResult.isPlayer && hitResult.playerId) {
-          // Hit a player!
-          const bodyPartText = hitResult.bodyPart ? ` [${hitResult.bodyPart.toUpperCase()}]` : '';
-          console.log(`Hit player! ID: ${hitResult.playerId}, Damage: ${hitResult.damage}${bodyPartText}${hitResult.isHeadshot ? ' (HEADSHOT!)' : ''}`);
-          
-          // Track hit statistics for testing
-          if (!this.hitStats) {
-            this.hitStats = {
-              totalHits: 0,
-              headshots: 0,
-              bodyShots: 0,
-              limbShots: 0,
-              totalDamage: 0,
-              shots: 0,
-              accuracy: 0
-            };
-          }
-          
-          this.hitStats.totalHits++;
-          this.hitStats.totalDamage += hitResult.damage;
-          
-          if (hitResult.bodyPart) {
-            switch(hitResult.bodyPart) {
-              case 'head':
-                this.hitStats.headshots++;
-                break;
-              case 'chest':
-              case 'stomach':
-                this.hitStats.bodyShots++;
-                break;
-              case 'arm':
-              case 'leg':
-                this.hitStats.limbShots++;
-                break;
-            }
-          }
-          
-          // Send hit event to server
-          if (this.multiplayer && this.multiplayer.connected) {
-            console.log('Sending hit to server - targetId:', hitResult.playerId);
-            this.multiplayer.sendHit(hitResult.playerId, hitResult.damage, this.weaponSystem.currentWeapon);
-          }
-          
-          // Show hit marker
-          if (this.hud) {
-            this.hud.showHitMarker(hitResult.isHeadshot);
-          }
-          
-          // Show damage number
-          this.showDamageNumber(hitResult.point, hitResult.damage, hitResult.isHeadshot);
-        } else {
-          // Hit environment
-          console.log(`Hit at distance: ${hitResult.distance.toFixed(2)}m`);
-        }
-      }
-      
-      // Track total shots for accuracy calculation
-      if (shotData) {
+      this.processShotData(shotData);
+    }
+  }
+  
+  processShotData(shotData) {
+    if (!shotData || !this.bulletSystem) return;
+    
+    // Don't process if dead
+    if (this.player.isDead) return;
+    
+    // Send shooting event to server
+    if (this.multiplayer && this.multiplayer.connected && this.multiplayer.roomId) {
+      // Convert Three.js Vector3 objects to plain objects
+      this.multiplayer.sendShoot(
+        {
+          x: shotData.origin.x,
+          y: shotData.origin.y,
+          z: shotData.origin.z
+        },
+        {
+          x: shotData.direction.x,
+          y: shotData.direction.y,
+          z: shotData.direction.z
+        },
+        this.weaponSystem.currentWeapon
+      );
+    }
+    
+    // Perform hit detection (pass remote players for checking)
+    const hitResult = this.bulletSystem.shoot(shotData, this.mapLoader.getColliders(), this.remotePlayers);
+    
+    if (hitResult.hit) {
+      if (hitResult.isPlayer && hitResult.playerId) {
+        // Hit a player!
+        const bodyPartText = hitResult.bodyPart ? ` [${hitResult.bodyPart.toUpperCase()}]` : '';
+        console.log(`Hit player! ID: ${hitResult.playerId}, Damage: ${hitResult.damage}${bodyPartText}${hitResult.isHeadshot ? ' (HEADSHOT!)' : ''}`);
+        console.log('Current weapon type:', this.weaponSystem.currentWeaponType);
+        console.log('Remote players IDs:', Array.from(this.remotePlayers.keys()));
+        
+        // Track hit statistics for testing
         if (!this.hitStats) {
-          this.hitStats = { totalHits: 0, shots: 0, accuracy: 0 };
+          this.hitStats = {
+            totalHits: 0,
+            headshots: 0,
+            bodyShots: 0,
+            limbShots: 0,
+            totalDamage: 0,
+            shots: 0,
+            accuracy: 0
+          };
         }
-        this.hitStats.shots++;
-        if (this.hitStats.totalHits > 0) {
-          this.hitStats.accuracy = ((this.hitStats.totalHits / this.hitStats.shots) * 100).toFixed(1);
+        
+        this.hitStats.totalHits++;
+        this.hitStats.totalDamage += hitResult.damage;
+        
+        if (hitResult.bodyPart) {
+          switch(hitResult.bodyPart) {
+            case 'head':
+              this.hitStats.headshots++;
+              break;
+            case 'chest':
+            case 'stomach':
+              this.hitStats.bodyShots++;
+              break;
+            case 'arm':
+            case 'leg':
+              this.hitStats.limbShots++;
+              break;
+          }
         }
+        
+        // Send hit event to server
+        if (this.multiplayer && this.multiplayer.connected) {
+          console.log('Sending hit to server - targetId:', hitResult.playerId);
+          console.log('Weapon being sent:', this.weaponSystem.currentWeaponType);
+          this.multiplayer.sendHit(hitResult.playerId, hitResult.damage, this.weaponSystem.currentWeaponType);
+        }
+        
+        // Show hit marker
+        if (this.hud) {
+          this.hud.showHitMarker(hitResult.isHeadshot);
+        }
+        
+        // Show damage number
+        this.showDamageNumber(hitResult.point, hitResult.damage, hitResult.isHeadshot);
+      } else {
+        // Hit environment
+        console.log(`Hit at distance: ${hitResult.distance.toFixed(2)}m`);
+      }
+    }
+    
+    // Track total shots for accuracy calculation
+    if (shotData) {
+      if (!this.hitStats) {
+        this.hitStats = { totalHits: 0, shots: 0, accuracy: 0 };
+      }
+      this.hitStats.shots++;
+      if (this.hitStats.totalHits > 0) {
+        this.hitStats.accuracy = ((this.hitStats.totalHits / this.hitStats.shots) * 100).toFixed(1);
       }
     }
   }
@@ -1460,6 +1478,7 @@ class Game {
   }
   
   createRemotePlayer(playerData) {
+    console.log('Creating remote player with data:', playerData);
     // Create new player model using the improved system
     // Randomly assign team for visual variety (or use playerData.team if available)
     const team = playerData.team || (Math.random() > 0.5 ? 'ct' : 't');
@@ -1508,8 +1527,10 @@ class Game {
     this.scene.add(playerMesh);
     
     // Store both the mesh and the model for animation
+    console.log('Storing remote player with ID:', playerData.id);
     this.remotePlayers.set(playerData.id, playerMesh);
     this.remotePlayerModels.set(playerData.id, remotePlayerModel);
+    console.log('Remote players after adding:', Array.from(this.remotePlayers.keys()));
     
     // Register with hitbox system for hit detection
     this.hitboxSystem.registerPlayer(playerData.id, remotePlayerModel);
@@ -1520,34 +1541,50 @@ class Game {
     return playerMesh;
   }
   
-  removeRemotePlayer(playerMesh) {
-    this.scene.remove(playerMesh);
+  removeRemotePlayer(playerId) {
+    console.log('Removing remote player with ID:', playerId);
     
-    // Find and remove from maps
-    for (const [id, mesh] of this.remotePlayers.entries()) {
-      if (mesh === playerMesh) {
-        // Unregister from hitbox system
-        this.hitboxSystem.unregisterPlayer(id);
-        
-        // Clean up player model
-        const playerModel = this.remotePlayerModels.get(id);
-        if (playerModel) {
-          playerModel.dispose();
-          this.remotePlayerModels.delete(id);
-        }
-        
-        // Remove from remote players map
-        this.remotePlayers.delete(id);
-        break;
+    // Get the mesh from the map
+    const playerMesh = this.remotePlayers.get(playerId);
+    
+    if (playerMesh) {
+      this.scene.remove(playerMesh);
+      
+      // Unregister from hitbox system
+      this.hitboxSystem.unregisterPlayer(playerId);
+      
+      // Clean up player model
+      const playerModel = this.remotePlayerModels.get(playerId);
+      if (playerModel) {
+        playerModel.dispose();
+        this.remotePlayerModels.delete(playerId);
       }
+      
+      // Remove from remote players map
+      this.remotePlayers.delete(playerId);
+      console.log('Remote players after removal:', Array.from(this.remotePlayers.keys()));
+    } else {
+      console.log('Player not found in remotePlayers map:', playerId);
     }
   }
   
   showRemoteShot(data) {
     // Show shooting effect from remote player
-    if (this.bulletSystem) {
+    if (this.bulletSystem && data.position && data.direction) {
+      // Convert plain objects to Three.js Vector3 objects
+      const position = new THREE.Vector3(
+        data.position.x || 0,
+        data.position.y || 0,
+        data.position.z || 0
+      );
+      const direction = new THREE.Vector3(
+        data.direction.x || 0,
+        data.direction.y || 0,
+        data.direction.z || 0
+      );
+      
       // Create a visual bullet trail
-      const trail = this.bulletSystem.createTrail(data.position, data.direction);
+      const trail = this.bulletSystem.createTrail(position, direction);
       if (trail) {
         this.scene.add(trail);
         setTimeout(() => this.scene.remove(trail), 100);
@@ -1613,7 +1650,7 @@ class Game {
   clearTestDummies() {
     if (this.testDummies) {
       this.testDummies.forEach(dummy => {
-        this.removeRemotePlayer(dummy.mesh);
+        this.removeRemotePlayer(dummy.id);
       });
       this.testDummies = [];
       console.log('Cleared all test dummies');

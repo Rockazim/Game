@@ -271,7 +271,7 @@ io.on('connection', (socket) => {
     });
   });
 
-  // Hit detection (simplified)
+  // Hit detection with improved validation
   socket.on('hit', (data) => {
     console.log('Hit event received:', data);
     const player = players.get(socket.id);
@@ -279,23 +279,43 @@ io.on('connection', (socket) => {
     
     console.log('Shooter:', player?.username, player?.id);
     console.log('Target found:', target?.username, target?.id, 'isDead:', target?.isDead);
+    console.log('All players:', Array.from(players.values()).map(p => ({ id: p.id, username: p.username, health: p.health })));
     
-    if (!player || !target || player.roomId !== target.roomId) return;
+    // Validate players exist and are in the same room
+    if (!player || !target || player.roomId !== target.roomId) {
+      console.log('Hit validation failed - player:', !!player, 'target:', !!target, 'same room:', player?.roomId === target?.roomId);
+      return;
+    }
+    
+    // Don't allow self-damage
+    if (player.id === target.id) {
+      console.log('Self-damage not allowed');
+      return;
+    }
+    
+    // Don't process hits from dead players
+    if (player.isDead) {
+      console.log('Dead players cannot shoot');
+      return;
+    }
     
     // Don't process hits on dead players
     if (target.isDead) {
       console.log('Target is already dead, ignoring hit');
       return;
     }
+    
+    // Validate damage amount (prevent cheating)
+    const damage = Math.min(Math.max(data.damage || 25, 0), 100);
 
     // Apply damage
-    target.health = Math.max(0, target.health - (data.damage || 25));
+    target.health = Math.max(0, target.health - damage);
 
     // Notify players
     io.to(player.roomId).emit('playerHit', {
       shooterId: player.id,
       targetId: target.id,
-      damage: data.damage || 25,
+      damage: damage,
       health: target.health
     });
 

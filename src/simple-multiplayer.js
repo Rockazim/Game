@@ -264,16 +264,11 @@ export class SimpleMultiplayer {
   sendMovement(position, rotation) {
     if (!this.connected || !this.roomId) return;
     
-    // Ensure we're sending plain objects, not Three.js objects
-    const posObj = position && typeof position === 'object' ? {
-      x: position.x || 0,
-      y: position.y || 0,
-      z: position.z || 0
-    } : { x: 0, y: 0, z: 0 };
-    
+    // Use helper to ensure we're sending plain objects
+    const posObj = this.toPlainVector(position);
     const rotObj = rotation && typeof rotation === 'object' ? {
-      x: rotation.x || 0,
-      y: rotation.y || 0
+      x: Number(rotation.x) || 0,
+      y: Number(rotation.y) || 0
     } : { x: 0, y: 0 };
     
     this.socket.emit('move', {
@@ -282,21 +277,38 @@ export class SimpleMultiplayer {
     });
   }
 
+  // Helper function to safely convert any object to plain object
+  toPlainVector(obj) {
+    // Handle null/undefined
+    if (!obj) return { x: 0, y: 0, z: 0 };
+    
+    // If it's already a plain object with x,y,z, ensure numeric values
+    if (typeof obj === 'object') {
+      return {
+        x: Number(obj.x) || 0,
+        y: Number(obj.y) || 0,
+        z: Number(obj.z) || 0
+      };
+    }
+    
+    // Default fallback
+    return { x: 0, y: 0, z: 0 };
+  }
+
   sendShoot(position, direction, weapon) {
     if (!this.connected || !this.roomId) return;
     
-    // Ensure we're sending plain objects, not Three.js objects
-    const posObj = position && typeof position === 'object' ? {
-      x: position.x || 0,
-      y: position.y || 0,
-      z: position.z || 0
-    } : { x: 0, y: 0, z: 0 };
+    // Use helper to ensure we're sending plain objects
+    const posObj = this.toPlainVector(position);
+    const dirObj = this.toPlainVector(direction);
     
-    const dirObj = direction && typeof direction === 'object' ? {
-      x: direction.x || 0,
-      y: direction.y || 0,
-      z: direction.z || 0
-    } : { x: 0, y: 0, z: 0 };
+    // Double-check that we're not sending any Three.js objects
+    try {
+      JSON.stringify({ position: posObj, direction: dirObj, weapon });
+    } catch (e) {
+      console.error('Failed to serialize shoot data:', e);
+      return;
+    }
     
     this.socket.emit('shoot', {
       position: posObj,
@@ -306,7 +318,12 @@ export class SimpleMultiplayer {
   }
 
   sendHit(targetId, damage, weapon) {
-    if (!this.connected || !this.roomId) return;
+    if (!this.connected || !this.roomId) {
+      console.log('Cannot send hit - not connected or not in room');
+      return;
+    }
+    
+    console.log(`Sending hit to server - Target: ${targetId}, Damage: ${damage}, Weapon: ${weapon}`);
     
     this.socket.emit('hit', {
       targetId,
@@ -319,16 +336,6 @@ export class SimpleMultiplayer {
     if (!this.connected || !this.roomId) return;
     
     this.socket.emit('chat', { message });
-  }
-  
-  sendHit(targetId, damage, weapon) {
-    if (!this.connected || !this.roomId) return;
-    
-    this.socket.emit('hit', {
-      targetId,
-      damage,
-      weapon
-    });
   }
   
   requestRespawn() {
@@ -360,7 +367,8 @@ export class SimpleMultiplayer {
     const player = this.players.get(playerId);
     if (player) {
       if (player.mesh && this.game.removeRemotePlayer) {
-        this.game.removeRemotePlayer(player.mesh);
+        // Pass the player ID, not the mesh
+        this.game.removeRemotePlayer(playerId);
       }
       this.players.delete(playerId);
     }
