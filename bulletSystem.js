@@ -9,6 +9,8 @@ export class BulletSystem {
     // Configure raycaster for better precision
     this.raycaster.near = 0.1;
     this.raycaster.far = 1000;
+    // Set camera for sprite raycasting (fixes melee attack error)
+    this.raycaster.camera = camera;
     this.impacts = [];
     this.maxImpacts = 50;
     this.trails = [];
@@ -47,7 +49,8 @@ export class BulletSystem {
       const material = new THREE.LineBasicMaterial({
         color: 0xffff00,
         transparent: true,
-        opacity: 0
+        opacity: 0,
+        linewidth: 2  // Make trails thicker
       });
       
       const trail = new THREE.Line(geometry, material);
@@ -107,14 +110,16 @@ export class BulletSystem {
     
     // Make trail more visible
     trail.active = true;
-    trail.opacity = 0.8; // More opaque
-    trail.mesh.material.opacity = 0.8;
+    trail.opacity = 1.0; // Start fully opaque
+    trail.mesh.material.opacity = 1.0;
     trail.mesh.material.color.setHex(0xffff00); // Bright yellow
     trail.mesh.visible = true;
     
+    console.log('Trail created:', { start: start, end: end, visible: trail.mesh.visible });
+    
     // Fade out animation
     const fadeOut = () => {
-      trail.opacity -= 0.05;
+      trail.opacity -= 0.08; // Slower fade
       trail.mesh.material.opacity = trail.opacity;
       
       if (trail.opacity <= 0) {
@@ -127,7 +132,7 @@ export class BulletSystem {
     };
     
     // Start fade after a short delay
-    setTimeout(fadeOut, 50);
+    setTimeout(fadeOut, 100); // Longer delay before fading
     
     return trail.mesh;
   }
@@ -337,9 +342,12 @@ export class BulletSystem {
     this.raycaster.set(this.camera.position, direction);
     this.raycaster.far = weaponData.range;
     
+    console.log('Melee attack initiated - range:', weaponData.range, 'damage:', weaponData.damage);
+    
     // First check for hits on remote players
     if (remotePlayers && remotePlayers.size > 0) {
       const playerMeshes = Array.from(remotePlayers.values());
+      console.log('Checking melee hit against', playerMeshes.length, 'remote players');
       
       // Filter out null meshes and create a list of valid targets (excluding sprites)
       const validTargets = [];
@@ -350,17 +358,21 @@ export class BulletSystem {
             validTargets.push(mesh);
           }
           // Add non-sprite children
-          if (mesh.children) {
+          if (mesh.children && Array.isArray(mesh.children)) {
             mesh.children.forEach(child => {
               if (child && child.matrixWorld && !(child instanceof THREE.Sprite)) {
                 validTargets.push(child);
               }
             });
           }
+        } else {
+          console.warn('Skipping null or invalid mesh in melee check');
         }
       });
       
+      console.log('Valid targets for melee:', validTargets.length);
       const playerIntersects = validTargets.length > 0 ? this.raycaster.intersectObjects(validTargets, false) : [];
+      console.log('Melee intersects found:', playerIntersects.length);
       
       if (playerIntersects.length > 0) {
         const hit = playerIntersects[0];
@@ -373,6 +385,8 @@ export class BulletSystem {
             break;
           }
         }
+        
+        console.log('Melee hit detected! Player ID:', hitPlayerId, 'Distance:', hit.distance);
         
         // Check for backstab (double damage from behind)
         let damage = weaponData.damage;
@@ -390,6 +404,8 @@ export class BulletSystem {
           isPlayer: true,
           playerId: hitPlayerId
         };
+      } else {
+        console.log('No melee hit on players');
       }
     }
     

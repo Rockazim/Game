@@ -1263,7 +1263,7 @@ class Game {
     // Don't process if dead
     if (this.player.isDead) return;
     
-    // Send shooting event to server
+    // Send shooting event to server (including melee attacks)
     if (this.multiplayer && this.multiplayer.connected && this.multiplayer.roomId) {
       // Convert Three.js Vector3 objects to plain objects
       this.multiplayer.sendShoot(
@@ -1277,8 +1277,13 @@ class Game {
           y: shotData.direction.y,
           z: shotData.direction.z
         },
-        this.weaponSystem.currentWeapon
+        this.weaponSystem.currentWeaponType // Send weapon type for proper animation
       );
+      
+      // Log melee attacks being sent
+      if (shotData.isMelee) {
+        console.log('Sending melee attack to server');
+      }
     }
     
     // Perform hit detection (pass remote players for checking)
@@ -1288,7 +1293,8 @@ class Game {
       if (hitResult.isPlayer && hitResult.playerId) {
         // Hit a player!
         const bodyPartText = hitResult.bodyPart ? ` [${hitResult.bodyPart.toUpperCase()}]` : '';
-        console.log(`Hit player! ID: ${hitResult.playerId}, Damage: ${hitResult.damage}${bodyPartText}${hitResult.isHeadshot ? ' (HEADSHOT!)' : ''}`);
+        const meleeText = hitResult.isMelee ? ' [MELEE]' : '';
+        console.log(`Hit player! ID: ${hitResult.playerId}, Damage: ${hitResult.damage}${bodyPartText}${meleeText}${hitResult.isHeadshot ? ' (HEADSHOT!)' : ''}`);
         console.log('Current weapon type:', this.weaponSystem.currentWeaponType);
         console.log('Remote players IDs:', Array.from(this.remotePlayers.keys()));
         
