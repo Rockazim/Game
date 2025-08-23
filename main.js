@@ -7,6 +7,7 @@ import { HUD } from './hud.js';
 import { SimpleMultiplayer } from './src/simple-multiplayer.js';
 import { PlayerModel } from './playerModel.js';
 import { HitboxSystem } from './hitboxSystem.js';
+import { SensitivityUI } from './sensitivityUI.js';
 
 class Game {
   constructor() {
@@ -70,6 +71,7 @@ class Game {
     this.setupWeaponSystem();
     this.setupFirstPersonControls();
     this.setupMovementControls();
+    this.setupSensitivityConverter();
     this.handleResize();
     this.animate();
   }
@@ -277,7 +279,7 @@ class Game {
     this.weaponSystem = new WeaponSystem(this.scene, this.weaponMount, this.camera);
     this.bulletSystem = new BulletSystem(this.scene, this.camera, this.hitboxSystem);
     this.crosshair = new Crosshair();
-    this.hud = new HUD();
+    this.hud = new HUD(this);
     
     // Set initial crosshair and HUD for default weapon
     this.crosshair.setWeapon('pistol');
@@ -286,6 +288,14 @@ class Game {
     // Set initial health
     this.playerHealth = 100;
     this.hud.updateHealth(this.playerHealth);
+  }
+
+  setupSensitivityConverter() {
+    // Initialize sensitivity converter UI
+    this.sensitivityUI = new SensitivityUI(this);
+    
+    // Load saved sensitivity from localStorage
+    this.sensitivityUI.loadSavedSensitivity();
   }
   
   setupFirstPersonControls() {
@@ -386,6 +396,12 @@ class Game {
       // Reload
       if (event.key === 'r' || event.key === 'R') {
         this.weaponSystem.reload();
+      }
+      // Open sensitivity converter
+      if (event.key === 'm' || event.key === 'M') {
+        if (this.sensitivityUI && !this.sensitivityUI.isVisible) {
+          this.sensitivityUI.show();
+        }
       }
     });
   }

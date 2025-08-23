@@ -1,5 +1,6 @@
 export class HUD {
-  constructor() {
+  constructor(game = null) {
+    this.game = game;
     this.container = null;
     this.ammoDisplay = null;
     this.healthDisplay = null;
